@@ -1,0 +1,11 @@
+*.pyc
+uv.lock
+.python-version
+pyproject.toml
+README.md
+results/
+board/
+logs/
+requirements.txt
+.history/
+linear*.py
