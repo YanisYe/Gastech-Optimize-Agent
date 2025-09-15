@@ -116,7 +116,7 @@ crop_tech_path = 'data/种植业技术列单产量产业0803.xlsx'
 
 # 首先加载全国数据以计算全国阈值和各农业区排放占比
 IDs_all, \
-NH3_Crop_colunms, \
+NH3_Crop_columns, \
 N2O_nitrogen_fertilizer_columns, \
 NO3_nitrogen_fertilizer_columns, \
 N_runoff_columns, \
@@ -152,6 +152,7 @@ threshold_N_runoff_PB_all, \
 threshold_NH3_PB_all, \
 threshold_CH4_all, \
 threshold_N2O_all, \
+county_scale_original_all, \
 county_scale_all = CountyDataLoader(county_df_path, IDs_df, soc_df_path, livestock_scale_path, crop_scale_path)
 
 Feeding, \
@@ -403,7 +404,7 @@ county_state = {
 industry_mapping = {}
 subindustry_lists = {}
 class_mapping = {
-    '种植业NH3挥发' : NH3_Crop_colunms,
+    '种植业NH3挥发' : NH3_Crop_columns,
     '氮肥N2O' : N2O_nitrogen_fertilizer_columns,
     '氮肥NO3' : NO3_nitrogen_fertilizer_columns,
     'N runoff' : N_runoff_columns,

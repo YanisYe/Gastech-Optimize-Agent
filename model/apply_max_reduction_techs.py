@@ -1833,7 +1833,6 @@ def main():
     try:
         # 创建环境配置 - 使用松嫩－三江平原农业区作为示例
         config = GasEnvConfig(
-            tech_amount_constraint=30,
             Reward_priority=[0.7, 0.5, 0.3, 0.2],
             county_df_path='data/基础数据-县级尺度.xlsx',
             IDs_df='data/县市亚区.xlsx',
@@ -1842,7 +1841,6 @@ def main():
             soc_df="data/SOC-县尺度.xlsx",
             livestock_scale="data/动物数量.xlsx",
             crop_scale="data/分县种植面积.xlsx",
-            local_target_penalty_factor=50.0,  # 新增：为配置添加惩罚因子
             linear_result_path='results/linear_optimization_results_by_county_5gases_hard_target.xlsx',
             only_lp_phase=True,  # 启用线性规划约束模式
             save_path="temp_yield_output"  # 临时路径，用于启用产量追踪
@@ -1867,7 +1865,7 @@ def main():
             logger.info("跳过技术包选取，从文件中加载技术包信息...")
             optimization_stats = load_tech_packages_from_files("results/level_based_stepwise_techs")
         else:
-            optimization_stats = stepwise_level_based_tech_optimization(env, env_config, use_parallel=False)
+            optimization_stats = stepwise_level_based_tech_optimization(env_config, use_parallel=False)
 
         # 在原始环境中重新应用所有选择的技术，确保最终状态正确
         logger.info("在原始环境中重新应用所有选择的技术...")
@@ -1884,7 +1882,7 @@ def main():
         else:
             logger.warning("未找到有效的县技术包分配信息，将重新运行优化过程来生成分配信息")
             logger.info("开始重新运行分步等级优化...")
-            optimization_stats = stepwise_level_based_tech_optimization(env, env_config, use_parallel=False)
+            optimization_stats = stepwise_level_based_tech_optimization(env_config, use_parallel=False)
 
             if 'county_assignments' in optimization_stats and optimization_stats['county_assignments']:
                 counties_step1 = [idx for idx, level in optimization_stats['county_assignments'].items() if level == 1]
