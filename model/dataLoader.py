@@ -677,6 +677,8 @@ def TechDataLoader(livestock_tech = "data/畜牧业技术列单-经济产量0626
                           crop_select],
                           ignore_index=True)
 
+    # 对crop影响的技术：经济成本 * 1000， 对livestock影响的技术：经济成本 * 10000
+    tech_set['经济成本'] = tech_set.apply(lambda row: row['经济成本'] * 1000 if row['class'] == 'crop' else row['经济成本'] * 10000, axis=1)
     # 01标准化 经济成本
     tech_set['标准化经济成本'] = (tech_set['经济成本'] - tech_set['经济成本'].min()) / (tech_set['经济成本'].max() - tech_set['经济成本'].min() + 1e-6)
 
