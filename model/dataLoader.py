@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import re
 import torch
@@ -390,7 +391,7 @@ def AgriAreaCountyDataLoader(
     unique_NO3_vals = torch.unique(threshold_NO3_PB)
     unique_NO3_vals = unique_NO3_vals[unique_NO3_vals != 9999000]
     if len(unique_NO3_vals) >= 2:
-        val_smallest = torch.tensor(408395.156056929)
+        val_smallest = torch.sort(unique_NO3_vals)[0][-1]
     else:
         val_smallest = torch.tensor(0.0)
     threshold_NO3_PB = torch.where(threshold_NO3_PB > 1000000, val_smallest, threshold_NO3_PB)
@@ -399,7 +400,7 @@ def AgriAreaCountyDataLoader(
     unique_N_runoff_vals = torch.unique(threshold_N_runoff_PB)
     unique_N_runoff_vals = unique_N_runoff_vals[unique_N_runoff_vals != 9999000]
     if len(unique_N_runoff_vals) >= 2:
-        val_smallest = torch.tensor(297733.242802793)
+        val_smallest = torch.sort(unique_N_runoff_vals)[0][-1]
     else:
         val_smallest = torch.tensor(0.0)
     threshold_N_runoff_PB = torch.where(threshold_N_runoff_PB > 1000000, val_smallest, threshold_N_runoff_PB)
@@ -408,7 +409,7 @@ def AgriAreaCountyDataLoader(
     unique_NH3_vals = torch.unique(threshold_NH3_PB)
     unique_NH3_vals = unique_NH3_vals[unique_NH3_vals != 9999000]
     if len(unique_NH3_vals) >= 2:
-        val_smallest = torch.tensor(372825.2553681)
+        val_smallest = torch.sort(unique_NH3_vals)[0][-1]
     else:
         val_smallest = torch.tensor(0.0)
     threshold_NH3_PB = torch.where(threshold_NH3_PB > 1000000, val_smallest, threshold_NH3_PB)
@@ -665,19 +666,41 @@ def TechDataLoader(livestock_tech = "data/畜牧业技术列单-经济产量0626
     crop_select = crop[['技术间的冲突','Mitigation strategy', '经济成本','技术分级', 'Crop species']].copy()
     crop_select['class'] = 'crop'
 
-    tech_set = pd.concat([Feeding_select, 
-                          Housing_select, 
-                          slurry_storage_select, 
-                          soild_storage_select, 
-                          composting_select, 
-                          additives_application_select, 
-                          soild_application_select, 
-                          slurry_application_select, 
-                          crop_select], 
+    tech_set = pd.concat([Feeding_select,
+                          Housing_select,
+                          slurry_storage_select,
+                          soild_storage_select,
+                          composting_select,
+                          additives_application_select,
+                          soild_application_select,
+                          slurry_application_select,
+                          crop_select],
                           ignore_index=True)
-    
+
     # 01标准化 经济成本
     tech_set['标准化经济成本'] = (tech_set['经济成本'] - tech_set['经济成本'].min()) / (tech_set['经济成本'].max() - tech_set['经济成本'].min() + 1e-6)
+
+    # 检查是否已经存在技术ID映射表
+    output_path = "data/tech_id_mapping.xlsx"
+    if os.path.exists(output_path):
+        # 如果文件已存在，直接读取
+        tech_id_mapping = pd.read_excel(output_path)
+        print(f"从文件读取技术ID映射表: {output_path}")
+    else:
+        # 生成技术ID映射表
+        tech_id_mapping = tech_set[['技术间的冲突', 'Mitigation strategy', 'class']].copy()
+        tech_id_mapping['技术ID'] = tech_id_mapping.index
+        # 添加物种信息
+        # 对于作物技术使用 'Crop species'，对于畜牧业技术使用 'Livestock species'
+        tech_id_mapping['species'] = tech_set.apply(
+            lambda row: row['Crop species'] if row['class'] == 'crop' else row['Livestock species'],
+            axis=1
+        )
+        tech_id_mapping = tech_id_mapping[['技术ID', 'Mitigation strategy', 'class', '技术间的冲突', 'species']]
+        # 保存技术ID映射表到文件
+        tech_id_mapping.to_excel(output_path, index=False)
+        print(f"技术ID映射表已保存到: {output_path}")
+
     return  Feeding, \
             Housing, \
             slurry_storage, \
