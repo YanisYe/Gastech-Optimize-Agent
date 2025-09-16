@@ -17,7 +17,7 @@ import multiprocessing as mp
 
 # 并行与日志配置
 ENABLE_DEBUG = os.getenv('OPT_DEBUG', '0') == '1'
-ENABLE_DEBUG = True # 开启调试模式
+# ENABLE_DEBUG = True # 开启调试模式
 NUM_PROCS = int(os.getenv('OPT_PROCS', str(max(1, (os.cpu_count() or 2) - 1))))
 GRB_THREADS_PER_PROC = int(os.getenv('GRB_THREADS_PER_PROC', '1'))
 
@@ -473,6 +473,38 @@ def _compute_CH4_delta(industry):
     coefficient = GAS_COEFFICIENTS['CH4'].get(industry, GAS_COEFFICIENTS['CH4']['default'])
     return coefficient
 
+def check_tech_scale_zero(tech_index, county_scale_data):
+    """
+    检查技术对应的作物/牲畜的规模或面积是否为0
+    
+    Args:
+        tech_index: 技术索引
+        county_scale_data: 县级规模数据
+        
+    Returns:
+        bool: True表示规模或面积为0，不能选择该技术；False表示可以选择
+    """
+    tech_line = tech_set.iloc[tech_index]
+    tech_industry = tech_line['Livestock species'] if tech_line['class'] != 'crop' else tech_line['Crop species']
+    
+    # 根据产业类型获取对应的规模数据
+    if tech_line['class'] == 'crop':
+        # 种植业：检查种植面积
+        if tech_industry == 'friut':
+            industry_scale = county_scale_data['fruittree_sown_area']
+        else:
+            industry_scale = county_scale_data['{}_sown_area'.format(tech_industry)]
+    else:
+        # 畜牧业：检查动物数量
+        tech_industry = tech_industry.lower()
+        if tech_industry in county_scale_data.index:
+            industry_scale = county_scale_data[tech_industry]
+        else:
+            industry_scale = county_scale_data[tech_industry.replace(' ', '')]
+    
+    # 如果规模或面积为0，则不能选择该技术
+    return industry_scale == 0
+
 def county_gas_tech_optimization(county_idx, relaxed=False):
     """
     为单个县进行气体技术组合优化，目标是最小化技术成本，同时满足所有气体减排要求。
@@ -800,6 +832,26 @@ def county_gas_tech_optimization(county_idx, relaxed=False):
                         tech_vars[i] + tech_vars[condition_index] <= 1,
                         name=f'Conflict_County_{0}_Tech_{i}_{condition_index}'
                     )
+
+    # ============零规模约束============
+    # 当技术对应的作物/牲畜规模或面积为0时，不能选择该技术
+    apply_zero_scale_constraints = True  # 设置为False可以移除零规模约束
+    if apply_zero_scale_constraints:
+        for tech_index in range(num_techs):
+            # 检查技术对应的作物/牲畜的规模或面积是否为0
+            is_scale_zero = check_tech_scale_zero(tech_index, county_scale_area.iloc[0])
+            
+            # 如果规模或面积为0，则不能选择该技术
+            if is_scale_zero:
+                model.addConstr(
+                    tech_vars[tech_index] == 0,
+                    name=f'ZeroScale_County_{0}_Tech_{tech_index}'
+                )
+                if ENABLE_DEBUG:
+                    tech_line = tech_set.iloc[tech_index]
+                    tech_name = f"{tech_line['Mitigation strategy']}_{tech_line['Crop species'] if tech_line['class'] == 'crop' else tech_line['Livestock species']}"
+                    tech_industry = tech_line['Livestock species'] if tech_line['class'] != 'crop' else tech_line['Crop species']
+                    logger.info(f"技术 {tech_index} ({tech_name}) 对应的{tech_industry}规模或面积为0，添加约束禁止选择")
 
     # # Limit how many solutions to collect
     # model.setParam(GRB.Param.PoolSolutions, 10)
