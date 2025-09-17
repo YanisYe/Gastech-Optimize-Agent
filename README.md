@@ -1,41 +1,53 @@
-# GasTech Optimization
+# 🌾 GasTech Optimization
 
-Deep reinforcement learning guided precise strategies for keeping multiple environmental impacts of agricultural within limits in China.
+[![Python](https://img.shields.io/badge/Python-3.12+-blue.svg)](https://python.org)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.7.1+-red.svg)](https://pytorch.org)
+[![Stable-Baselines3](https://img.shields.io/badge/Stable--Baselines3-Latest-green.svg)](https://github.com/DLR-RM/stable-baselines3)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-## Overview
+> This repository is the implementation of the paper: **"Deep reinforcement learning guided precise strategies for keeping multiple environmental impacts of agricultural within limits in China"**
+
+## 📋 Overview
 
 This project implements a deep reinforcement learning approach to optimize agricultural gas technology strategies while maintaining environmental impact constraints in China. The system uses advanced RL algorithms based on [Stable-Baselines3](https://github.com/DLR-RM/stable-baselines3) to provide precise decision-making strategies for agricultural environmental management.
 
-## Environment Setup
+### 🎯 Key Features
+
+- 🤖 **Deep Reinforcement Learning**: PPO-based optimization using Stable-Baselines3
+- 🌱 **Agricultural Focus**: Specialized for Chinese agricultural environmental management
+- 📊 **Curriculum Learning**: Progressive training strategy for better convergence
+- 📈 **Comprehensive Analysis**: Detailed environmental impact assessment tools
+
+## 🚀 Environment Setup
 
 We recommend using `uv` for environment management:
 
-### Prerequisites
-- Python 3.12+
-- [uv](https://docs.astral.sh/uv/) package manager
+### 📋 Prerequisites
+- 🐍 Python 3.12+
+- 📦 [uv](https://docs.astral.sh/uv/) package manager
 
-### Installation
+### ⚙️ Installation
 
-1. Clone the repository:
+1. **Clone the repository:**
 ```bash
-git clone <repository-url>
-cd GasTech-Optimization
+git clone https://github.com/YanisYe/Gastech-Optimize-Agent.git
+cd Gastech-Optimize-Agent
 ```
 
-2. Create and activate virtual environment with uv:
+2. **Create and activate virtual environment with uv:**
 ```bash
 uv venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 ```
 
-3. Install dependencies:
+3. **Install dependencies:**
 ```bash
 uv pip install -r requirements.txt
 ```
 
-## Usage
+## 🎮 Usage
 
-### Training
+### 🏋️ Training
 
 To train the reinforcement learning model for all agricultural regions:
 
@@ -43,14 +55,14 @@ To train the reinforcement learning model for all agricultural regions:
 python model/train.py
 ```
 
-The training process will:
-- Load agricultural and environmental data for each region
-- Initialize the RL environment with curriculum learning
-- Train PPO models using Stable-Baselines3
-- Save model checkpoints and training logs for each region
-- Use exponential learning rate scheduling
+**The training process will:**
+- 📊 Load agricultural and environmental data for each region
+- 🎯 Initialize the RL environment with curriculum learning
+- 🤖 Train PPO models using Stable-Baselines3
+- 💾 Save model checkpoints and training logs for each region
+- 📈 Use exponential learning rate scheduling
 
-### Testing
+### 🧪 Testing
 
 To test the trained model for specific regions:
 
@@ -58,14 +70,14 @@ To test the trained model for specific regions:
 python model/test.py
 ```
 
-The testing process will:
-- Load the trained models for specified regions
-- Evaluate performance using the trained policies
-- Generate detailed results and visualizations
-- Merge results from all regions into consolidated files
-- Output environmental impact analysis
+**The testing process will:**
+- 🔄 Load the trained models for specified regions
+- 📊 Evaluate performance using the trained policies
+- 📈 Generate detailed results and visualizations
+- 🔗 Merge results from all regions into consolidated files
+- 🌍 Output environmental impact analysis
 
-### Analysis
+### 📊 Analysis
 
 For detailed analysis of RL area technology impact:
 
@@ -73,29 +85,39 @@ For detailed analysis of RL area technology impact:
 python utils/analysis_rl_area_tech_impact.py
 ```
 
-## Project Structure
+## 📁 Project Structure
 
 ```
-├── model/                           # Model definitions and checkpoints
-├── utils/                           # Utility functions and analysis tools
-├── data/                            # Dataset and configuration files
-├── results/                         # Output results and visualizations
-├── requirements.txt                 # Python dependencies
-├── pyproject.toml                   # Project configuration
-└── README.md                        # This file
+├── 📂 model/                        # Model definitions and checkpoints
+│   ├── train.py                     # Training script
+│   ├── test.py                      # Testing script
+│   ├── GasEnviroment_curriculum_learning.py  # RL environment
+│   └── ...
+├── 📂 utils/                        # Utility functions and analysis tools
+├── 📂 data/                         # Dataset and configuration files
+├── 📂 results/                      # Output results and visualizations
+├── 📂 stable-baselines3/            # Custom Stable-Baselines3 implementation
+├── 📄 requirements.txt              # Python dependencies
+├── 📄 pyproject.toml                # Project configuration
+└── 📄 README.md                     # This file
 ```
 
-## Dependencies
+## 📦 Dependencies
 
-Key dependencies include:
-- PyTorch (2.7.1+)
-- Gymnasium (0.29.0)
-- NumPy (2.2.6)
-- Pandas (2.2.3)
-- Matplotlib (3.10.3)
-- SciPy (1.15.3)
-- [Stable-Baselines3](https://github.com/DLR-RM/stable-baselines3) - RL algorithms
+**Key dependencies include:**
+- 🤖 **[Stable-Baselines3](https://github.com/DLR-RM/stable-baselines3)** - RL algorithms
 
-## License
+## 📄 License
 
-MIT License
+This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
+
+---
+
+<div align="center">
+
+**🌾 GasTech Optimization** - *Optimizing agricultural environmental management through deep reinforcement learning*
+
+[![GitHub](https://img.shields.io/badge/GitHub-Repository-black?style=for-the-badge&logo=github)](https://github.com/YanisYe/Gastech-Optimize-Agent)
+[![Paper](https://img.shields.io/badge/📄-Paper-blue?style=for-the-badge)](https://github.com/YanisYe/Gastech-Optimize-Agent)
+
+</div>
