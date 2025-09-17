@@ -32,8 +32,8 @@ FERTILIZER_CROP_KEYWORDS = {
 TECH_PACKAGE_MAPPING = {
     0: [],  # 无需技术干预 - 不采用任何技术
     1: ['STEP_1'],  # ≤1级技术包 - 采用STEP_1的所有技术
-    2: ['STEP_1', 'STEP_2'],  # ≤2级技术包 - 采用STEP_1和STEP_2的所有技术
-    3: ['STEP_1', 'STEP_2', 'STEP_3']  # ≤3级技术包 - 采用所有步骤的技术
+    2: ['STEP_2'],  # ≤2级技术包 - 采用STEP_1和STEP_2的所有技术
+    3: ['STEP_3']  # ≤3级技术包 - 采用所有步骤的技术
 }
 
 def get_crop_name_from_tech(tech_str: str, crop_keywords=None) -> str:
@@ -95,11 +95,10 @@ def get_techs_for_package_level(package_level: int, tech_packages_df: pd.DataFra
 
     # 从技术包数据中筛选出对应步骤的技术
     techs_in_package = []
-    for step in steps:
-        step_techs = tech_packages_df[tech_packages_df['步骤'] == step]['技术名称'].tolist()
-        techs_in_package.extend(step_techs)
+    step_techs = tech_packages_df[tech_packages_df['步骤'] == steps[0]][['技术名称', '物种']].values.tolist()
+    techs_in_package.extend(step_techs)
 
-    return list(set(techs_in_package))  # 去重
+    return techs_in_package  # 去重
 
 def get_county_package_level(county_name: str, assignment_df: pd.DataFrame) -> int:
     """获取县的技术包等级"""
@@ -193,16 +192,13 @@ def step_one(df: pd.DataFrame, tech_selected, use_one_cut_analysis=False, assign
                 continue
 
             # 检查该县的技术包中是否有Right rate技术
-            for tech_name in county_techs:
+            for tech_name, species in county_techs:  
                 if pd.notna(tech_name) and 'Right rate' in str(tech_name):
                     # 一刀切方式：从技术包数据中获取物种信息来确定作物
-                    tech_row = tech_packages_df[tech_packages_df['技术名称'] == tech_name]
-                    if not tech_row.empty:
-                        species = tech_row['物种'].iloc[0]
-                        crop_name = get_crop_name_from_species(species)
-                        if crop_name and crop_name in optimal_n_rates:
-                            has_right_rate_tech = True
-                            applied_crops.append((crop_name, tech_name))
+                    crop_name = get_crop_name_from_species(species)
+                    if crop_name and crop_name in optimal_n_rates:
+                        has_right_rate_tech = True
+                        applied_crops.append((crop_name, tech_name))
         else:
             # 原有方式：遍历tech_selected中的技术
             # 找到该县在tech_selected中的列索引
@@ -322,28 +318,25 @@ def step_two(manure_df: pd.DataFrame, tech_selected, fertilizer_amount, use_one_
                 county_techs = get_techs_for_package_level(county_package_level, tech_packages_df)
 
                 # 检查该县的技术包中是否有针对该作物的compost/manure技术
-                for tech_name in county_techs:
+                for tech_name, species in county_techs:
                     if pd.notna(tech_name):
                         tech_str = str(tech_name).lower()
                         # 一刀切方式：从技术包数据中获取物种信息来确定作物
-                        tech_row = tech_packages_df[tech_packages_df['技术名称'] == tech_name]
-                        if not tech_row.empty:
-                            species = tech_row['物种'].iloc[0]
-                            tech_crop_name = get_crop_name_from_species(species)
+                        tech_crop_name = get_crop_name_from_species(species)
 
-                            if ('compost' in tech_str or 'fresh manure' in tech_str or 'manure' in tech_str) and tech_crop_name == crop_name:
-                                has_compost_manure_tech = True
-                                applied_tech = tech_name
+                        if ('compost' in tech_str or 'fresh manure' in tech_str or 'manure' in tech_str) and tech_crop_name == crop_name:
+                            has_compost_manure_tech = True
+                            applied_tech = tech_name
 
-                                # 检查技术级别
-                                tech_name_lower = str(tech_name).lower()
-                                if 'low' in tech_name_lower:
-                                    tech_level = 'low'
-                                elif 'medium' in tech_name_lower or 'mid' in tech_name_lower:
-                                    tech_level = 'medium'
-                                elif 'high' in tech_name_lower:
-                                    tech_level = 'high'
-                                break
+                            # 检查技术级别
+                            tech_name_lower = str(tech_name).lower()
+                            if 'low' in tech_name_lower:
+                                tech_level = 'low'
+                            elif 'medium' in tech_name_lower or 'mid' in tech_name_lower:
+                                tech_level = 'medium'
+                            elif 'high' in tech_name_lower:
+                                tech_level = 'high'
+                            break
             else:
                 # 原有方式：在tech_selected中找到对应的县
                 county_col_idx = None
@@ -436,9 +429,9 @@ def step_two(manure_df: pd.DataFrame, tech_selected, fertilizer_amount, use_one_
                     print(f"    对应肥料N应从 {fertilizer_n:.3f} -> {new_fertilizer_n:.3f}")
                     
     # 更新manure_df中的manure N
-    updated_manure_df['manure N'] = updated_manure_df.filter(regex='.*manure').sum(axis=1)
+    updated_manure_df['manure N'] = updated_manure_df.filter(['rice_manure', 'wheat_manure', 'maize_manure', 'beans_manure', 'potato_manure', 'cotton_manure', 'sugarcane_manure', 'sugarbeet_manure', 'fruittree_manure', 'vegetable_manure']).sum(axis=1)
     # 更新肥料N
-    fertilizer_amount['化肥氮量\n(kt N）'] = fertilizer_amount.filter(regex='.*amount').sum(axis=1)
+    fertilizer_amount['化肥氮量(kt N）_after'] = fertilizer_amount.filter(like='_amount').sum(axis=1)
     return updated_manure_df, fertilizer_amount
 
 def main(use_one_cut_analysis=False):
@@ -471,7 +464,7 @@ def main(use_one_cut_analysis=False):
     else:
         # 原有方式
         print("使用原有分析方式")
-        tech_selected = pd.read_excel("results/tech_selected_summary_merged.xlsx")
+        tech_selected = pd.read_excel("results/rl_opt_result/tech_selected_summary_merged.xlsx")
         updated_df = step_one(df, tech_selected)
 
         # 存储step1的肥料用量数据
@@ -492,7 +485,7 @@ if __name__ == "__main__":
 
     # 检查命令行参数
     use_one_cut = len(sys.argv) > 1 and sys.argv[1] == "--one-cut"
-    use_one_cut = True
+    # use_one_cut = True
     if use_one_cut:
         print("运行一刀切分析...")
         main(use_one_cut_analysis=True)

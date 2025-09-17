@@ -161,10 +161,11 @@ def generate_tech_impact_dataframe(tech_id, tech_info_row, target_counties=None)
 
 def analyze_tech_impacts_by_region(output_dir="results",
                                    region_data_path="data/县市亚区.xlsx",
-                                   tech_selected_path="results/tech_selected_summary_merged.xlsx",
+                                   tech_selected_path="results/rl_opt_result/tech_selected_summary_merged.xlsx",
                                    focus_gases=['NH3变化', 'NO3变化', 'N_runoff变化']):
     """
     按农业大区分析强化学习应用的技术减排量，找出每个农业区内减排效果最好的技术
+    注意：甘肃新疆、黄土高原、内蒙及长城沿线三个区域将合并为"西北地区"进行分析
 
     Args:
         output_dir: 结果输出目录
@@ -195,6 +196,23 @@ def analyze_tech_impacts_by_region(output_dir="results",
     try:
         region_df = pd.read_excel(region_data_path)
         logger.info(f"成功读取农业分区数据，共 {len(region_df)} 个县")
+        
+        # 合并西北地区：甘肃新疆、黄土高原、内蒙及长城沿线
+        def merge_northwest_regions(region_name):
+            if pd.isna(region_name):
+                return region_name
+            region_str = str(region_name).strip()
+            if region_str in ['甘肃新疆', '黄土高原', '内蒙及长城沿线']:
+                return '西北地区'
+            return region_str
+        
+        region_df['所属农业区'] = region_df['所属农业区'].apply(merge_northwest_regions)
+        logger.info("已将甘肃新疆、黄土高原、内蒙及长城沿线合并为西北地区")
+        
+        # 统计合并后的区域分布
+        region_counts = region_df['所属农业区'].value_counts()
+        logger.info(f"合并后的区域分布: {dict(region_counts)}")
+        
     except Exception as e:
         logger.error(f"读取农业分区数据失败: {e}")
         return
@@ -378,6 +396,8 @@ def analyze_tech_impacts_by_region(output_dir="results",
                         '总NH3减排量': 0,
                         '总NO3减排量': 0,
                         '总N_runoff减排量': 0,
+                        '总CH4减排量': 0,
+                        '总N2O减排量': 0,
                         '总净减排量': 0
                     }
 
@@ -391,7 +411,9 @@ def analyze_tech_impacts_by_region(output_dir="results",
                 affected_counties = filtered_group_df[
                     (filtered_group_df['NH3变化'] != 0) |
                     (filtered_group_df['NO3变化'] != 0) |
-                    (filtered_group_df['N_runoff变化'] != 0)
+                    (filtered_group_df['N_runoff变化'] != 0) |
+                    (filtered_group_df['CH4变化'] != 0) |
+                    (filtered_group_df['N2O变化'] != 0)
                 ]
                 region_impacts['影响县数'] += len(affected_counties)
 
@@ -399,6 +421,8 @@ def analyze_tech_impacts_by_region(output_dir="results",
                 region_impacts['总NH3减排量'] += filtered_group_df['NH3变化'].sum()
                 region_impacts['总NO3减排量'] += filtered_group_df['NO3变化'].sum()
                 region_impacts['总N_runoff减排量'] += filtered_group_df['N_runoff变化'].sum()
+                region_impacts['总CH4减排量'] += filtered_group_df['CH4变化'].sum()
+                region_impacts['总N2O减排量'] += filtered_group_df['N2O变化'].sum()
                 region_impacts['总净减排量'] += filtered_group_df['净减排量'].sum()
 
         except Exception as e:
@@ -436,6 +460,9 @@ def generate_region_analysis_results(region_tech_impacts, output_dir):
                 '总NH3减排量': impacts['总NH3减排量'],
                 '总NO3减排量': impacts['总NO3减排量'],
                 '总N_runoff减排量': impacts['总N_runoff减排量'],
+                '总CH4减排量': impacts['总CH4减排量'],
+                '总N2O减排量': impacts['总N2O减排量'],
+                '总CH4+N2O减排量': impacts['总CH4减排量'] + impacts['总N2O减排量'],
                 '总净减排量': impacts['总净减排量'],
                 # 计算重点气体的综合减排效果（取绝对值求和）
                 '重点气体综合减排': abs(impacts['总NH3减排量']) + abs(impacts['总NO3减排量']) + abs(impacts['总N_runoff减排量'])
@@ -449,6 +476,9 @@ def generate_region_analysis_results(region_tech_impacts, output_dir):
 
             # 保存结果
             safe_region_name = region.replace('/', '_').replace('\\', '_')
+            # 为西北地区添加特殊标识
+            if region == '西北地区':
+                safe_region_name = '西北地区_合并分析'
             output_file = os.path.join(output_base_dir, f"{safe_region_name}_tech_emission_reduction_analysis.xlsx")
 
             with pd.ExcelWriter(output_file, engine='openpyxl') as writer:
@@ -456,19 +486,23 @@ def generate_region_analysis_results(region_tech_impacts, output_dir):
                 summary_df.to_excel(writer, sheet_name='技术减排量排名', index=False)
 
                 # 按单一气体排序的表
-                for gas in ['总NH3减排量', '总NO3减排量', '总N_runoff减排量']:
+                for gas in ['总NH3减排量', '总NO3减排量', '总N_runoff减排量', '总CH4减排量', '总N2O减排量', '总CH4+N2O减排量']:
                     gas_df = summary_df.sort_values(gas, ascending=True)  # 负值越大减排越多
                     gas_df.to_excel(writer, sheet_name=f'{gas}排名', index=False)
 
             logger.info(f"{region} 的分析结果已保存到: {output_file}")
 
             # 输出该区域的统计信息
-            logger.info(f"{region} 统计信息:")
+            region_display_name = "西北地区(甘肃新疆+黄土高原+内蒙及长城沿线)" if region == '西北地区' else region
+            logger.info(f"{region_display_name} 统计信息:")
             logger.info(f"  - 技术总数: {len(summary_df)}")
             logger.info(f"  - 有减排效果的技术数: {len(summary_df[summary_df['重点气体综合减排'] > 0])}")
             logger.info(f"  - NH3最大减排量: {summary_df['总NH3减排量'].min():.4f}")
             logger.info(f"  - NO3最大减排量: {summary_df['总NO3减排量'].min():.4f}")
             logger.info(f"  - N_runoff最大减排量: {summary_df['总N_runoff减排量'].min():.4f}")
+            logger.info(f"  - CH4最大减排量: {summary_df['总CH4减排量'].min():.4f}")
+            logger.info(f"  - N2O最大减排量: {summary_df['总N2O减排量'].min():.4f}")
+            logger.info(f"  - CH4+N2O最大减排量: {summary_df['总CH4+N2O减排量'].min():.4f}")
 
     # 生成全国汇总表
     generate_national_summary(region_tech_impacts, output_base_dir)
@@ -493,6 +527,8 @@ def generate_national_summary(region_tech_impacts, output_dir):
                     '全国NH3减排量': 0,
                     '全国NO3减排量': 0,
                     '全国N_runoff减排量': 0,
+                    '全国CH4减排量': 0,
+                    '全国N2O减排量': 0,
                     '全国净减排量': 0,
                     '覆盖农业区': []
                 }
@@ -502,6 +538,8 @@ def generate_national_summary(region_tech_impacts, output_dir):
             national_summary[tech_key]['全国NH3减排量'] += impacts['总NH3减排量']
             national_summary[tech_key]['全国NO3减排量'] += impacts['总NO3减排量']
             national_summary[tech_key]['全国N_runoff减排量'] += impacts['总N_runoff减排量']
+            national_summary[tech_key]['全国CH4减排量'] += impacts['总CH4减排量']
+            national_summary[tech_key]['全国N2O减排量'] += impacts['总N2O减排量']
             national_summary[tech_key]['全国净减排量'] += impacts['总净减排量']
             national_summary[tech_key]['覆盖农业区'].append(region)
 
@@ -510,6 +548,7 @@ def generate_national_summary(region_tech_impacts, output_dir):
     for tech_key, data in national_summary.items():
         national_data.append({
             **data,
+            '全国CH4+N2O减排量': data['全国CH4减排量'] + data['全国N2O减排量'],
             '重点气体综合减排': abs(data['全国NH3减排量']) + abs(data['全国NO3减排量']) + abs(data['全国N_runoff减排量']),
             '覆盖农业区列表': ', '.join(data['覆盖农业区'])
         })
