@@ -22,10 +22,10 @@ register(
     entry_point='GasEnviroment_curriculum_learning:GasEnv',
 )
 
-# 第二阶段参数配置
-date = "0909"
+# 参数配置
+date = "0916"
 version = f"{date}-all"
-area_df = pd.read_excel('data/2012年现状全国县域氮素平衡数据.xlsx')
+area_df = pd.read_excel('data/县市亚区.xlsx')
 area_unique = area_df['所属农业亚区'].unique()
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -38,13 +38,13 @@ def exponential_schedule(initial_lr, final_lr):
 
 for area in area_unique:
     # 如果亚区不在指定列表中，则跳过
-    if area not in ['松嫩－三江平原农业区']:
-        continue
+    # if area not in ['琼雷及南海诸岛农林区', '青甘牧农区']:
+    #     continue
 
     # 如果亚区已经存在，则跳过
-    if os.path.exists(f"results/{version}/{area}"):
-        print(f"亚区 {area} 已经存在，跳过")
-        continue
+    # if os.path.exists(f"results/{version}/{area}"):
+    #     print(f"亚区 {area} 已经存在，跳过")
+    #     continue
     
     print(f"开始评估亚区 {area}")
     try:
@@ -184,4 +184,4 @@ def merge_results_by_county():
     print(f"合并完成！结果保存在: {merged_path}")
 
 # 执行合并
-merge_results_by_county()
+# merge_results_by_county()

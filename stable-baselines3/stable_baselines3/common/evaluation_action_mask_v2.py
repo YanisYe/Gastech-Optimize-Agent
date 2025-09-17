@@ -155,6 +155,25 @@ def evaluate_policy(
         mask[conlicts_tect_idx] = True
         return mask
 
+    def check_tech_scale_zero(tech_index, county_scale_data, tech_set):
+        """
+        检查技术对应的作物/牲畜的规模或面积是否为0
+        """
+        tech_line = tech_set.iloc[tech_index]
+        tech_industry = tech_line['Livestock species'] if tech_line['class'] != 'crop' else tech_line['Crop species']
+        if tech_line['class'] == 'crop':
+            if tech_industry == 'friut':
+                industry_scale = county_scale_data['fruittree_sown_area']
+            else:
+                industry_scale = county_scale_data['{}_sown_area'.format(tech_industry)]
+        else:
+            tech_industry = tech_industry.lower()
+            if tech_industry in county_scale_data.index or tech_industry in county_scale_data.keys():
+                industry_scale = county_scale_data[tech_industry]
+            else:
+                industry_scale = county_scale_data.get(tech_industry.replace(' ', ''), 0)
+        return industry_scale == 0
+
     def reset_action_mask(env, env_idx=None):
         # 将counties_need_tech中为False的县对应的action_mask设置为True（屏蔽不需要技术的县）
         # counties_need_tech是布尔数组，True表示需要技术，False表示不需要
@@ -164,10 +183,25 @@ def evaluate_policy(
             for i in range(n_envs):
                 counties_need_tech = env.get_attr('counties_need_tech', i)[0]
                 action_mask[i, ~counties_need_tech, :] = True
+                # 初始化规模/面积为0的县-产业技术全部mask
+                county_scale_df = env.get_attr('county_scale_original', i)[0]
+                tech_set = model.techSet
+                for countyId in range(numCounty):
+                    for t_idx in range(numTech):
+                        if check_tech_scale_zero(t_idx, county_scale_df.iloc[countyId], tech_set):
+                            action_mask[i, countyId, t_idx] = True
         else:
             counties_need_tech = env.get_attr('counties_need_tech', env_idx)[0]
             action_mask = torch.zeros((numCounty, numTech), dtype=bool).to(device)
             action_mask[~counties_need_tech, :] = True
+            # 初始化规模/面积为0的县-产业技术全部mask
+            county_scale_df = env.get_attr('county_scale_original', env_idx)[0]
+            tech_set = model.techSet
+            for countyId in range(numCounty):
+                for t_idx in range(numTech):
+                    if check_tech_scale_zero(t_idx, county_scale_df.iloc[countyId], tech_set):
+                        action_mask[countyId, t_idx] = True
+
         return action_mask
 
     

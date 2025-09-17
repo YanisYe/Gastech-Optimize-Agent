@@ -391,7 +391,7 @@ def AgriAreaCountyDataLoader(
     unique_NO3_vals = torch.unique(threshold_NO3_PB)
     unique_NO3_vals = unique_NO3_vals[unique_NO3_vals != 9999000]
     if len(unique_NO3_vals) >= 2:
-        val_smallest = torch.sort(unique_NO3_vals)[0][-1]
+        val_smallest = torch.tensor(408395.156056929)
     else:
         val_smallest = torch.tensor(0.0)
     threshold_NO3_PB = torch.where(threshold_NO3_PB > 1000000, val_smallest, threshold_NO3_PB)
@@ -400,7 +400,7 @@ def AgriAreaCountyDataLoader(
     unique_N_runoff_vals = torch.unique(threshold_N_runoff_PB)
     unique_N_runoff_vals = unique_N_runoff_vals[unique_N_runoff_vals != 9999000]
     if len(unique_N_runoff_vals) >= 2:
-        val_smallest = torch.sort(unique_N_runoff_vals)[0][-1]
+        val_smallest = torch.tensor(297733.242802793)
     else:
         val_smallest = torch.tensor(0.0)
     threshold_N_runoff_PB = torch.where(threshold_N_runoff_PB > 1000000, val_smallest, threshold_N_runoff_PB)
@@ -409,7 +409,7 @@ def AgriAreaCountyDataLoader(
     unique_NH3_vals = torch.unique(threshold_NH3_PB)
     unique_NH3_vals = unique_NH3_vals[unique_NH3_vals != 9999000]
     if len(unique_NH3_vals) >= 2:
-        val_smallest = torch.sort(unique_NH3_vals)[0][-1]
+        val_smallest = torch.tensor(372825.2553681)
     else:
         val_smallest = torch.tensor(0.0)
     threshold_NH3_PB = torch.where(threshold_NH3_PB > 1000000, val_smallest, threshold_NH3_PB)

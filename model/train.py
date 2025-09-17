@@ -23,8 +23,8 @@ register(
     entry_point='GasEnviroment_curriculum_learning:GasEnv',
 )
 
-date = "0911"
-version = f"{date}-test"
+date = "0916"
+version = f"{date}-all"
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 from typing import Callable
@@ -46,7 +46,7 @@ def exponential_schedule(initial_lr, final_lr):
     return func
 
 def train():
-    area_df = pd.read_excel('data/2012年现状全国县域氮素平衡数据.xlsx')
+    area_df = pd.read_excel('data/县市亚区.xlsx')
     area_unique = area_df['所属农业亚区'].unique()
 
     print("开始训练")
@@ -55,7 +55,7 @@ def train():
         print(f"\n训练区域 {area_idx+1}/{len(area_unique)}: {area}")
 
         # 指定训练亚区
-        # if area != '闽南粤中农林水产区':
+        # if area != '青甘牧农区':
         #     continue
 
         # 检查当前亚区是否已存在训练日志目录
