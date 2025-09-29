@@ -46,10 +46,10 @@ def CountyDataLoader(
     Total_CH4_tensor = torch.tensor(total_GHG[["Total CH4 True"]].values)
     Total_N2O_tensor = torch.tensor(total_GHG[["Total N2O True"]].values)
 
-    # # CH4目标减排比例为30%
+    # # CH4 target reduction ratio is 30%
     # threshold_CH4 = torch.sum(Total_CH4_tensor * 0.3)
     threshold_CH4 = target['全国CH4减排目标'].values[0]
-    # # N2O目标减排比例为34%
+    # # N2O target reduction ratio is 34%
     # threshold_N2O = torch.sum(Total_N2O_tensor * 0.34)
     threshold_N2O = target['全国N2O减排目标'].values[0]
     
@@ -66,14 +66,14 @@ def CountyDataLoader(
     N2O_manure_application = pd.read_excel(df_county, sheet_name='粪肥施用N2O')
     N2O_nitrogen_fertilizer = pd.read_excel(df_county, sheet_name='氮肥N2O')
     NO3_manure_application = pd.read_excel(df_county, sheet_name='粪肥施用NO3')
-    # N03_Fecal_management = pd.read_excel(df_county, sheet_name='粪便管理NO3')
-    NO3_nitrogen_fertilizer = pd.read_excel(df_county, sheet_name='氮肥NO3')
+    # N03_Fecal_management = pd.read_excel(df_county, sheet_name='Fecal management NO3')
+    NO3_nitrogen_fertilizer = pd.read_excel(df_county, sheet_name='Nitrogen fertilizer NO3')
     N_runoff = pd.read_excel(df_county, sheet_name='N runoff')
-    CH4_Fecal_management = pd.read_excel(df_county, sheet_name='粪便管理CH4')
-    CH4_intestine = pd.read_excel(df_county, sheet_name='肠道CH4')
-    Straw_burning = pd.read_excel(df_county, sheet_name='秸秆焚烧')
+    CH4_Fecal_management = pd.read_excel(df_county, sheet_name='Fecal management CH4')
+    CH4_intestine = pd.read_excel(df_county, sheet_name='Enteric CH4')
+    Straw_burning = pd.read_excel(df_county, sheet_name='Straw burning')
 
-    # 添加农业亚区信息  
+    # Add agricultural region information  
     IDs = pd.read_excel(IDs_df)
     NH3_Crop_columns = pd.Series(NH3_Crop.columns[2:].to_list())
     N2O_nitrogen_fertilizer_columns = pd.Series(N2O_nitrogen_fertilizer.columns[2:].to_list())
@@ -94,42 +94,42 @@ def CountyDataLoader(
     CH4_intestine_columns = pd.Series(CH4_intestine.columns[3:].to_list())
     CH4_Fecal_management_columns = pd.Series(CH4_Fecal_management.columns[2:].to_list())
 
-    # 粪肥施用数据
+    # Manure application data
     NH3_manure_application_tensor = torch.tensor(NH3_manure_application.iloc[:, 4:].values)
     N2O_manure_application_tensor = torch.tensor(N2O_manure_application.iloc[:, 4:].values)
     NO3_manure_application_tensor = torch.tensor(NO3_manure_application.iloc[:, 4:].values)
 
-    # 种植业数据
+    # Crop production data
     NH3_Crop_tensor = torch.tensor(NH3_Crop.iloc[:, 2:].values)
     N2O_nitrogen_fertilizer_tensor = torch.tensor(N2O_nitrogen_fertilizer.iloc[:, 2:].values)
     NO3_nitrogen_fertilizer_tensor = torch.tensor(NO3_nitrogen_fertilizer.iloc[:, 2:].values)
     N_runoff_tensor = torch.tensor(N_runoff.iloc[:, 2:].values)
     Soc_tensor = torch.tensor(soc.values)
-    # 畜牧业数据
+    # Livestock farming data
     NH3_Fecal_management_tensor = torch.tensor(NH3_Fecal_management.iloc[:, 4:].values)
     N2O_Fecal_management_tensor = torch.tensor(N2O_Fecal_management.iloc[:, 4:].values)
     # N03_Fecal_management_tensor = torch.tensor(N03_Fecal_management.iloc[:, 4:].values)
 
-    # 秸秆数据
+    # Straw data
     Straw_tensor = torch.tensor(Straw_burning.iloc[:, 1:].values)
     
-    # 肠道CH4数据
+    # Enteric CH4 data
     CH4_intestine_tensor = torch.tensor(CH4_intestine.iloc[:, 3:].values)
 
-    # 粪便管理CH4数据
+    # Fecal management CH4 data
     CH4_Fecal_management_tensor = torch.tensor(CH4_Fecal_management.iloc[:, 2:].values)
 
-    # 读取产业规模数据
+    # Load industry scale data
     livestock_scale = pd.read_excel(livestock_scale)
     crop_scale = pd.read_excel(crop_scale)
-    # 合并数据
+    # Merge data
     county_scale = livestock_scale.merge(crop_scale, on=['County', 'Cities', 'Province'], how='left')
     county_scale = county_scale.merge(IDs, left_on=['County', 'Cities'], right_on=['Counties', 'Cities'], how='left')
 
-    # 保存原始规模（用于成本计算）
+    # Save original scale (for cost calculation)
     county_scale_original = county_scale.copy()
 
-    # 列01标准化
+    # Column 0-1 standardization
     county_scale.iloc[:, 3:-4] = county_scale.iloc[:, 3:-4].apply(lambda x: (x - x.min(axis=0)) / (x.max(axis=0) - x.min(axis=0) + 1e-6), axis=0)
     return IDs, \
             NH3_Crop_columns, \
@@ -199,7 +199,7 @@ def ProvinceCountyDataLoader(
     CH4_intestine = pd.read_excel(df_county, sheet_name='肠道CH4')
     Straw_burning = pd.read_excel(df_county, sheet_name='秸秆焚烧')
 
-    # 省份筛选
+    # Province filtering
     IDs = pd.read_excel(IDs_df)
     indices = IDs.index
 
@@ -207,7 +207,7 @@ def ProvinceCountyDataLoader(
     threshold_N_runoff_PB = torch.tensor(target['N runoff PB (t)'].iloc[indices].values)
     threshold_NH3_PB = torch.tensor(target['NH3 PB 31 (t)'].iloc[indices].values)
 
-    # 处理NO3阈值异常值
+    # Handle NO3 threshold outliers
     unique_NO3_vals = torch.unique(threshold_NO3_PB)
     unique_NO3_vals = unique_NO3_vals[unique_NO3_vals != 9999000]
     if len(unique_NO3_vals) >= 2:
@@ -216,7 +216,7 @@ def ProvinceCountyDataLoader(
         val_smallest = torch.tensor(0.0)
     threshold_NO3_PB = torch.where(threshold_NO3_PB > 1000000, val_smallest, threshold_NO3_PB)
 
-    # 处理N_runoff阈值异常值
+    # Handle N_runoff threshold outliers
     unique_N_runoff_vals = torch.unique(threshold_N_runoff_PB)
     unique_N_runoff_vals = unique_N_runoff_vals[unique_N_runoff_vals != 9999000]
     if len(unique_N_runoff_vals) >= 2:
@@ -225,7 +225,7 @@ def ProvinceCountyDataLoader(
         val_smallest = torch.tensor(0.0)
     threshold_N_runoff_PB = torch.where(threshold_N_runoff_PB > 1000000, val_smallest, threshold_N_runoff_PB)
 
-    # 处理NH3阈值异常值
+    # Handle NH3 threshold outliers
     unique_NH3_vals = torch.unique(threshold_NH3_PB)
     unique_NH3_vals = unique_NH3_vals[unique_NH3_vals != 9999000]
     if len(unique_NH3_vals) >= 2:
@@ -239,9 +239,9 @@ def ProvinceCountyDataLoader(
     Total_CH4_tensor = torch.tensor(total_GHG[["Total CH4 True"]].values)
     Total_N2O_tensor = torch.tensor(total_GHG[["Total N2O True"]].values)
 
-    # CH4目标减排比例为30%
+    # CH4 target reduction ratio is 30%
     threshold_CH4 = target['全国CH4减排目标'].values[0]
-    # N2O目标减排比例为34%
+    # N2O target reduction ratio is 34%
     # threshold_N2O = torch.sum(Total_N2O_tensor * 0.4)
     threshold_N2O = target['全国N2O减排目标'].values[0]
     
@@ -252,7 +252,7 @@ def ProvinceCountyDataLoader(
     Rice_CH4_Gg_tensor = torch.tensor(total_GHG[["Rice CH4 Gg"]].values)
     nitrogen_deposition_N2O_tensor = torch.tensor(total_GHG[["大气氮沉降引起的N2O间接排放"]].values)
     straw_returning_N2O_tensor = torch.tensor(total_GHG[["秸秆还田N2O排放"]].values)
-    # 数据列名
+    # Data column names
     NH3_Crop_columns = pd.Series(NH3_Crop.columns[2:].to_list())
     N2O_nitrogen_fertilizer_columns = pd.Series(N2O_nitrogen_fertilizer.columns[2:].to_list())
     NO3_nitrogen_fertilizer_columns = pd.Series(NO3_nitrogen_fertilizer.columns[2:].to_list())
@@ -271,44 +271,44 @@ def ProvinceCountyDataLoader(
     CH4_intestine_columns = pd.Series(CH4_intestine.columns[3:].to_list())
     CH4_Fecal_management_columns = pd.Series(CH4_Fecal_management.columns[2:].to_list())
 
-    # 粪肥施用数据
+    # Manure application data
     NH3_manure_application_tensor = torch.tensor(NH3_manure_application.iloc[indices, 4:].values)
     N2O_manure_application_tensor = torch.tensor(N2O_manure_application.iloc[indices, 4:].values)
     NO3_manure_application_tensor = torch.tensor(NO3_manure_application.iloc[indices, 4:].values)
 
-    # 种植业数据
+    # Crop production data
     NH3_Crop_tensor = torch.tensor(NH3_Crop.iloc[indices, 2:].values)
     N2O_nitrogen_fertilizer_tensor = torch.tensor(N2O_nitrogen_fertilizer.iloc[indices, 2:].values)
     NO3_nitrogen_fertilizer_tensor = torch.tensor(NO3_nitrogen_fertilizer.iloc[indices, 2:].values)
     N_runoff_tensor = torch.tensor(N_runoff.iloc[indices, 2:].values)
     Soc_tensor = torch.tensor(soc.values)
-    # 畜牧业数据
+    # Livestock farming data
     NH3_Fecal_management_tensor = torch.tensor(NH3_Fecal_management.iloc[indices, 4:].values)
     N2O_Fecal_management_tensor = torch.tensor(N2O_Fecal_management.iloc[indices, 4:].values)
     # N03_Fecal_management_tensor = torch.tensor(N03_Fecal_management.iloc[indices, 4:].values)
 
-    # 秸秆数据
+    # Straw data
     Straw_tensor = torch.tensor(Straw_burning.iloc[:, 1:].values)
 
     
-    # 肠道CH4数据
+    # Enteric CH4 data
     CH4_intestine_tensor = torch.tensor(CH4_intestine.iloc[indices, 3:].values)
 
-    # 粪便管理CH4数据
+    # Fecal management CH4 data
     CH4_Fecal_management_tensor = torch.tensor(CH4_Fecal_management.iloc[indices, 2:].values)
 
-    # 读取产业规模数据
+    # Load industry scale data
     livestock_scale_df = pd.read_excel(livestock_scale)
     crop_scale_df = pd.read_excel(crop_scale)
-    # 合并数据
+    # Merge data
     county_scale = livestock_scale_df.merge(crop_scale_df, on=['County', 'Cities', 'Province'], how='left')
-    # 按省份筛选产业规模数据
+    # Filter industry scale data by province
     county_scale = county_scale[county_scale['Province'] == province]
 
-    # 保存原始规模（用于成本计算）
+    # Save original scale (for cost calculation)
     county_scale_original = county_scale.copy()
 
-    # 列01标准化
+    # Column 0-1 standardization
     county_scale.iloc[:, 3:] = county_scale.iloc[:, 3:].apply(lambda x: (x - x.min(axis=0)) / (x.max(axis=0) - x.min(axis=0) + 1e-6), axis=0)
 
     IDs = IDs.reset_index(drop=True)
@@ -377,7 +377,7 @@ def AgriAreaCountyDataLoader(
     CH4_intestine = pd.read_excel(df_county, sheet_name='肠道CH4')
     Straw_burning = pd.read_excel(df_county, sheet_name='秸秆焚烧')
 
-    # 省份筛选
+    # Agricultural region filtering
 
     IDs = pd.read_excel(IDs_df)
     IDs = IDs[IDs['所属农业亚区'] == area]
@@ -387,7 +387,7 @@ def AgriAreaCountyDataLoader(
     threshold_N_runoff_PB = torch.tensor(target['N runoff PB (t)'].iloc[indices].values)
     threshold_NH3_PB = torch.tensor(target['NH3 PB 31 (t)'].iloc[indices].values)
 
-    # 处理NO3阈值异常值
+    # Handle NO3 threshold outliers
     unique_NO3_vals = torch.unique(threshold_NO3_PB)
     unique_NO3_vals = unique_NO3_vals[unique_NO3_vals != 9999000]
     if len(unique_NO3_vals) >= 2:
@@ -396,7 +396,7 @@ def AgriAreaCountyDataLoader(
         val_smallest = torch.tensor(0.0)
     threshold_NO3_PB = torch.where(threshold_NO3_PB > 1000000, val_smallest, threshold_NO3_PB)
 
-    # 处理N_runoff阈值异常值
+    # Handle N_runoff threshold outliers
     unique_N_runoff_vals = torch.unique(threshold_N_runoff_PB)
     unique_N_runoff_vals = unique_N_runoff_vals[unique_N_runoff_vals != 9999000]
     if len(unique_N_runoff_vals) >= 2:
@@ -405,7 +405,7 @@ def AgriAreaCountyDataLoader(
         val_smallest = torch.tensor(0.0)
     threshold_N_runoff_PB = torch.where(threshold_N_runoff_PB > 1000000, val_smallest, threshold_N_runoff_PB)
 
-    # 处理NH3阈值异常值
+    # Handle NH3 threshold outliers
     unique_NH3_vals = torch.unique(threshold_NH3_PB)
     unique_NH3_vals = unique_NH3_vals[unique_NH3_vals != 9999000]
     if len(unique_NH3_vals) >= 2:
@@ -419,10 +419,10 @@ def AgriAreaCountyDataLoader(
     Total_CH4_tensor = torch.tensor(total_GHG[["Total CH4 True"]].values)
     Total_N2O_tensor = torch.tensor(total_GHG[["Total N2O True"]].values)
 
-    # CH4目标减排比例为30%
+    # CH4 target reduction ratio is 30%
     # threshold_CH4 = torch.sum(Total_CH4_tensor * 0.4)
     threshold_CH4 = target['全国CH4减排目标'].values[0]
-    # N2O目标减排比例为34%
+    # N2O target reduction ratio is 34%
     # threshold_N2O = torch.sum(Total_N2O_tensor * 0.4)
     threshold_N2O = target['全国N2O减排目标'].values[0]
     soc_df = pd.read_excel(soc_df_path).iloc[indices, :]
@@ -432,7 +432,7 @@ def AgriAreaCountyDataLoader(
     Rice_CH4_Gg_tensor = torch.tensor(total_GHG[["Rice CH4 Gg"]].values)
     nitrogen_deposition_N2O_tensor = torch.tensor(total_GHG[["大气氮沉降引起的N2O间接排放"]].values)
     straw_returning_N2O_tensor = torch.tensor(total_GHG[["秸秆还田N2O排放"]].values)
-    # 数据列名
+    # Data column names
     NH3_Crop_columns = pd.Series(NH3_Crop.columns[2:].to_list())
     N2O_nitrogen_fertilizer_columns = pd.Series(N2O_nitrogen_fertilizer.columns[2:].to_list())
     NO3_nitrogen_fertilizer_columns = pd.Series(NO3_nitrogen_fertilizer.columns[2:].to_list())
@@ -451,45 +451,45 @@ def AgriAreaCountyDataLoader(
     CH4_intestine_columns = pd.Series(CH4_intestine.columns[3:].to_list())
     CH4_Fecal_management_columns = pd.Series(CH4_Fecal_management.columns[2:].to_list())
 
-    # 粪肥施用数据
+    # Manure application data
     NH3_manure_application_tensor = torch.tensor(NH3_manure_application.iloc[indices, 4:].values)
     N2O_manure_application_tensor = torch.tensor(N2O_manure_application.iloc[indices, 4:].values)
     NO3_manure_application_tensor = torch.tensor(NO3_manure_application.iloc[indices, 4:].values)
 
-    # 种植业数据
+    # Crop production data
     NH3_Crop_tensor = torch.tensor(NH3_Crop.iloc[indices, 2:].values)
     N2O_nitrogen_fertilizer_tensor = torch.tensor(N2O_nitrogen_fertilizer.iloc[indices, 2:].values)
     NO3_nitrogen_fertilizer_tensor = torch.tensor(NO3_nitrogen_fertilizer.iloc[indices, 2:].values)
     N_runoff_tensor = torch.tensor(N_runoff.iloc[indices, 2:].values)
     Soc_tensor = torch.tensor(soc.values)
-    # 畜牧业数据
+    # Livestock farming data
     NH3_Fecal_management_tensor = torch.tensor(NH3_Fecal_management.iloc[indices, 4:].values)
     N2O_Fecal_management_tensor = torch.tensor(N2O_Fecal_management.iloc[indices, 4:].values)
     # N03_Fecal_management_tensor = torch.tensor(N03_Fecal_management.iloc[indices, 4:].values)
 
-    # 秸秆数据
+    # Straw data
     Straw_tensor = torch.tensor(Straw_burning.iloc[indices, 1:].values)
     
-    # 肠道CH4数据
+    # Enteric CH4 data
     CH4_intestine_tensor = torch.tensor(CH4_intestine.iloc[indices, 3:].values)
 
-    # 粪便管理CH4数据
+    # Fecal management CH4 data
     CH4_Fecal_management_tensor = torch.tensor(CH4_Fecal_management.iloc[indices, 2:].values)
 
-    # 读取产业规模数据
+    # Load industry scale data
     livestock_scale_df = pd.read_excel(livestock_scale)
     crop_scale_df = pd.read_excel(crop_scale)
-    # 合并数据
+    # Merge data
     county_scale = livestock_scale_df.merge(crop_scale_df, on=['County', 'Cities', 'Province'], how='left')
     county_scale = county_scale.merge(IDs, left_on=['County', 'Cities'], right_on=['Counties', 'Cities'], how='left')
 
-    # 按省份筛选产业规模数据
+    # Filter industry scale data by agricultural region
     county_scale = county_scale[county_scale['所属农业亚区'] == area]
 
-    # 保存原始规模（用于成本计算）
+    # Save original scale (for cost calculation)
     county_scale_original = county_scale.copy()
 
-    # 列01标准化
+    # Column 0-1 standardization
     county_scale.iloc[:, 3:-4] = county_scale.iloc[:, 3:-4].apply(lambda x: (x - x.min(axis=0)) / (x.max(axis=0) - x.min(axis=0) + 1e-6), axis=0)
 
 
@@ -536,7 +536,7 @@ def AgriAreaCountyDataLoader(
 
 
 def PriorityTechDataLoader(livestock_tech = "data/畜牧业技术列单.xlsx", crop_tech = "data/种植业技术列单.xlsx", priority = 4):
-    # 畜牧业技术列单
+    # Livestock technology sheets
     Feeding = pd.read_excel(livestock_tech, sheet_name="Feeding")
     Feeding = Feeding[Feeding['经济分级'] == priority]
 
@@ -567,7 +567,7 @@ def PriorityTechDataLoader(livestock_tech = "data/畜牧业技术列单.xlsx", c
     slurry_application = pd.read_excel(livestock_tech, sheet_name="slurry application")
     slurry_application = slurry_application[slurry_application['经济分级'] == priority]
 
-    # 种植业技术列单
+    # Crop technology sheets
     crop = pd.read_excel(crop_tech)
     crop = crop[crop['经济分级'] == priority]
 
@@ -620,9 +620,9 @@ def PriorityTechDataLoader(livestock_tech = "data/畜牧业技术列单.xlsx", c
             crop_select
 
 def TechDataLoader(livestock_tech = "data/畜牧业技术列单-经济产量0626.xlsx", crop_tech = "data/种植业技术列单产量产业0626.xlsx"):
-    # 畜牧业技术列单
+    # Livestock technology sheets
     Feeding = pd.read_excel(livestock_tech, sheet_name="Feeding")
-    Housing = pd.read_excel(livestock_tech, sheet_name="Housing")    
+    Housing = pd.read_excel(livestock_tech, sheet_name="Housing")
     # slurry storage
     slurry_storage = pd.read_excel(livestock_tech, sheet_name="slurry storage")
     # soild storage
@@ -636,7 +636,7 @@ def TechDataLoader(livestock_tech = "data/畜牧业技术列单-经济产量0626
     # slurry application
     slurry_application = pd.read_excel(livestock_tech, sheet_name="slurry application")
 
-    # 种植业技术列单
+    # Crop technology sheets
     crop = pd.read_excel(crop_tech)
 
     Feeding_select = Feeding[['技术间的冲突','Mitigation strategy', '技术分级', '经济成本','Livestock species']].copy()
@@ -677,31 +677,31 @@ def TechDataLoader(livestock_tech = "data/畜牧业技术列单-经济产量0626
                           crop_select],
                           ignore_index=True)
 
-    # 对crop影响的技术：经济成本 * 1000， 对livestock影响的技术：经济成本 * 10000
+    # For crop technologies: economic cost * 1000, for livestock technologies: economic cost * 10000
     tech_set['经济成本'] = tech_set.apply(lambda row: row['经济成本'] * 1000 if row['class'] == 'crop' else row['经济成本'] * 10000, axis=1)
-    # 01标准化 经济成本
+    # 0-1 standardization of economic cost
     tech_set['标准化经济成本'] = (tech_set['经济成本'] - tech_set['经济成本'].min()) / (tech_set['经济成本'].max() - tech_set['经济成本'].min() + 1e-6)
 
-    # 检查是否已经存在技术ID映射表
+    # Check if technology ID mapping table already exists
     output_path = "data/tech_id_mapping.xlsx"
     if os.path.exists(output_path):
-        # 如果文件已存在，直接读取
+        # If file already exists, read directly
         tech_id_mapping = pd.read_excel(output_path)
-        print(f"从文件读取技术ID映射表: {output_path}")
+        print(f"Loading technology ID mapping table from file: {output_path}")
     else:
-        # 生成技术ID映射表
+        # Generate technology ID mapping table
         tech_id_mapping = tech_set[['技术间的冲突', 'Mitigation strategy', 'class']].copy()
         tech_id_mapping['技术ID'] = tech_id_mapping.index
-        # 添加物种信息
-        # 对于作物技术使用 'Crop species'，对于畜牧业技术使用 'Livestock species'
+        # Add species information
+        # Use 'Crop species' for crop technologies, 'Livestock species' for livestock technologies
         tech_id_mapping['species'] = tech_set.apply(
             lambda row: row['Crop species'] if row['class'] == 'crop' else row['Livestock species'],
             axis=1
         )
         tech_id_mapping = tech_id_mapping[['技术ID', 'Mitigation strategy', 'class', '技术间的冲突', 'species']]
-        # 保存技术ID映射表到文件
+        # Save technology ID mapping table to file
         tech_id_mapping.to_excel(output_path, index=False)
-        print(f"技术ID映射表已保存到: {output_path}")
+        print(f"Technology ID mapping table saved to: {output_path}")
 
     return  Feeding, \
             Housing, \

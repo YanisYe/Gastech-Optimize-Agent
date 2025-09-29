@@ -5,7 +5,7 @@
 [![Stable-Baselines3](https://img.shields.io/badge/Stable--Baselines3-Latest-green.svg)](https://github.com/DLR-RM/stable-baselines3)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> This repository is the implementation of the paper: **"Deep reinforcement learning guided precise strategies for keeping multiple environmental impacts of agricultural within limits in China"**
+> This repository is the implementation of the paper: **"Keeping China's agriculture within environmental boundaries through precision mitigation with minimal technology and cost"**
 
 ## 📋 Overview
 
@@ -45,8 +45,6 @@ source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 uv pip install -r requirements.txt
 ```
 
-## 🎮 Usage
-
 ### 🏋️ Training
 
 To train the reinforcement learning model for all agricultural regions:
@@ -75,32 +73,6 @@ python model/test.py
 - 📊 Evaluate performance using the trained policies
 - 📈 Generate detailed results and visualizations
 - 🔗 Merge results from all regions into consolidated files
-- 🌍 Output environmental impact analysis
-
-### 📊 Analysis
-
-For detailed analysis of RL area technology impact:
-
-```bash
-python utils/analysis_rl_area_tech_impact.py
-```
-
-## 📁 Project Structure
-
-```
-├── 📂 model/                        # Model definitions and checkpoints
-│   ├── train.py                     # Training script
-│   ├── test.py                      # Testing script
-│   ├── GasEnviroment_curriculum_learning.py  # RL environment
-│   └── ...
-├── 📂 utils/                        # Utility functions and analysis tools
-├── 📂 data/                         # Dataset and configuration files
-├── 📂 results/                      # Output results and visualizations
-├── 📂 stable-baselines3/            # Custom Stable-Baselines3 implementation
-├── 📄 requirements.txt              # Python dependencies
-├── 📄 pyproject.toml                # Project configuration
-└── 📄 README.md                     # This file
-```
 
 ## 📦 Dependencies
 

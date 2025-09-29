@@ -1,8 +1,15 @@
 import os
 import sys
 sys.path.append("stable-baselines3")
-os.environ["CUDA_VISIBLE_DEVICES"] = "7"
+
 import gymnasium as gym
+import pandas as pd
+import torch as th
+import numpy as np
+import torch
+import glob
+from typing import Callable
+
 from logger import setup_logger
 from GasEnviroment_curriculum_learning import GasEnv, GasEnvConfig
 from stable_baselines3 import PPO_action_mask_v2
@@ -11,23 +18,17 @@ from gymnasium.envs.registration import register
 from stable_baselines3.common.callbacks import EvalCallback
 from stable_baselines3.common.vec_env import DummyVecEnv, VecCheckNan
 from AttentionPolicy import GasEnvPolicy
-import pandas as pd
-import torch as th
-import numpy as np
-import torch
-import glob
 
-# 注册环境
+# Register environment
 register(
     id='GasEnviroment_curriculum_learning',
     entry_point='GasEnviroment_curriculum_learning:GasEnv',
 )
 
-date = "0916"
+# Configuration
+date = "xxxx"
 version = f"{date}-all"
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
-from typing import Callable
 
 def linear_schedule(initial_value: float) -> Callable[[float], float]:
     """
@@ -46,27 +47,32 @@ def exponential_schedule(initial_lr, final_lr):
     return func
 
 def train():
+    """
+    Train PPO models for all agricultural regions using curriculum learning.
+    """
+    # Load agricultural region data
     area_df = pd.read_excel('data/县市亚区.xlsx')
     area_unique = area_df['所属农业亚区'].unique()
 
-    print("开始训练")
+    print("Starting training...")
     
     for area_idx, area in enumerate(area_unique):
-        print(f"\n训练区域 {area_idx+1}/{len(area_unique)}: {area}")
+        print(f"\nTraining region {area_idx+1}/{len(area_unique)}: {area}")
 
-        # 指定训练亚区
+        # Specify training region (uncomment to train specific region)
         # if area != '青甘牧农区':
         #     continue
 
-        # 检查当前亚区是否已存在训练日志目录
+        # Check if training log directory already exists for current region
         area_log_path = f'logs/{version}/{area}/'
         if os.path.exists(area_log_path):
-            print(f"区域 {area} 的日志目录已存在，跳过训练")
-            continue  # 跳过当前亚区
+            print(f"Region {area} log directory already exists, skipping training")
+            continue  # Skip current region
 
-
+        # Training configuration
         total_steps = 2**18
         
+        # Environment configuration
         config = GasEnvConfig(
             Reward_priority=[7, 5, 3, 2],
             county_df_path='data/基础数据-县级尺度.xlsx',
@@ -79,17 +85,19 @@ def train():
             IDs_df='data/县市亚区.xlsx',
             save_path=None,
             linear_result_path='results/linear_optimization_results_by_county_5gases_hard_target.xlsx',
-            only_lp_phase=True,  # 启用课程学习模式
-            total_steps = total_steps,
-            lp_phase_ratio = 0.8,  # 线性规划阶段占比，只在线性规划解空间学习
-            phase_1_ratio = 0.85,  # 第一阶段占比，放开技术等级 1
-            phase_2_ratio = 0.9,  # 第二阶段占比，放开技术等级 2
+            only_lp_phase=True,  # Enable curriculum learning mode
+            total_steps=total_steps,
+            lp_phase_ratio=0.8,  # Linear programming phase ratio, learn only in LP solution space
+            phase_1_ratio=0.85,  # Phase 1 ratio, release technology level 1
+            phase_2_ratio=0.9,  # Phase 2 ratio, release technology level 2
         )
 
         try:
+            # Create vectorized environment
             env = make_vec_env('GasEnviroment_curriculum_learning', n_envs=5, env_kwargs={'config': config})
             env = VecCheckNan(env, raise_exception=True)
             
+            # Setup evaluation callback
             eval_callback = EvalCallback(
                 env, 
                 best_model_save_path=f'logs/{version}/{area}/',
@@ -98,18 +106,19 @@ def train():
                 deterministic=False, 
                 render=False
             )
-            # 从头开始训练
+            
+            # Initialize PPO model
             model = PPO_action_mask_v2(
                 GasEnvPolicy,
                 env, 
-                batch_size=256,  # 批次大小
+                batch_size=256,  # Batch size
                 verbose=1, 
                 tensorboard_log='./board/',
                 seed=42,
-                learning_rate=exponential_schedule(2e-5, 1e-6),  # 学习率
-                n_steps=2**14,  # 每步收集的样本数 
-                ent_coef=0.01,  # 熵系数 
-                clip_range=0.5,  # PPO裁剪系数（默认0.2）
+                learning_rate=exponential_schedule(2e-5, 1e-6),  # Learning rate
+                n_steps=2**14,  # Number of samples collected per step
+                ent_coef=0.01,  # Entropy coefficient
+                clip_range=0.5,  # PPO clipping coefficient (default 0.2)
                 device=device,
                 policy_kwargs=dict(
                     optimizer_class=th.optim.Adam,
@@ -121,18 +130,22 @@ def train():
                 )
             )
 
+            # Train the model
             model.learn(
                 total_timesteps=total_steps,
                 tb_log_name=f"PPO_Scratch_{version}_{area}",
                 callback=eval_callback
             )
 
+            # Save the final model
             model.save(f'logs/{version}/{area}/final_model')
-            print(f"区域 {area} 训练完成")
+            print(f"Region {area} training completed")
+            
+            # Clean up memory
             del model, env, config
 
         except Exception as e:
-            print(f"区域 {area} 训练失败: {e}")
+            print(f"Region {area} training failed: {e}")
             continue
 
 

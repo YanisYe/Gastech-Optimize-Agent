@@ -156,23 +156,23 @@ gap_NO3_origin = Total_NO3_national - threshold_NO3_PB_all
 gap_N_runoff_origin = Total_N_runoff_national - threshold_N_runoff_PB_all
 
 # Filter counties needing technology addition (counties exceeding any gas threshold)
-# 读取超标县域数据
+# Load data of counties that exceed emission standards
 exceed_counties_df = pd.read_excel('data/超标县域.xlsx')
 exceed_counties_mask = exceed_counties_df['超标县'] == 1
 
-# 获取超标县域中的县名列表
+# Get list of county names from counties that exceed emission standards
 exceed_county_names = exceed_counties_df[exceed_counties_mask]['所属地州'].tolist()
 
-# 创建超标县域的布尔掩码（基于县名匹配）
+# Create boolean mask for counties exceeding emission standards (based on county name matching)
 exceed_counties_bool = IDs_all['Counties'].isin(exceed_county_names)
 
-# 三种气体超标的县
-gas_exceed_mask = ~((gap_NO3_origin <= 0) & 
-                    (gap_N_runoff_origin <= 0) & 
+# Counties exceeding emission standards for the three gases (NH3, NO3, N_runoff)
+gas_exceed_mask = ~((gap_NO3_origin <= 0) &
+                    (gap_N_runoff_origin <= 0) &
                     (gap_NH3_origin <= 0))
-gas_exceed_mask = gas_exceed_mask.numpy()  # 转换为numpy数组
+gas_exceed_mask = gas_exceed_mask.numpy()  # Convert to numpy array
 
-# 需要技术的县：三种气体超标 或者 在超标县域Excel中标记为1
+# Counties needing technology: those exceeding emission standards for the three gases OR marked as 1 in the exceed_counties Excel file
 counties_need_tech = (gas_exceed_mask | exceed_counties_bool)
 
 print(f"✓ Total counties: {len(IDs_all)}")
