@@ -9,3 +9,7 @@ logs/
 requirements.txt
 .history/
 linear*.py
+# Ignore data, results, and utils folders
+/data/
+/results/
+/utils/
