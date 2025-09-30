@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-分步等级优化：按技术等级分步选择技术组合，每等级内按等级、经济成本、减排量排序
+Step-by-step level optimization: Select technology combinations by technology level, sorting within each level by level, economic cost, and emission reduction.
 
-优化逻辑：
-1. 使用环境中的技术影响机制计算每个技术的净减排量
-2. 技术影响公式：g_after = g_before * (1 + delta)
-3. 计算步骤：
-   a. 对每个受影响的子产业，计算所有县的总基础排放量
-   b. 净减排量 = sum(总基础排放量 * delta) for all affected sub-industries
-   c. delta < 0: 减排贡献（正值），delta > 0: 增排贡献（负值）
-4. 分步选择策略：
-   a. 第一步：为所有县应用≤1级技术包（按等级、经济成本、减排量排序）
-   b. 第二步：为仍未达标县重新应用≤2级技术包（按等级、经济成本、减排量排序）
-   c. 第三步：为仍未达标县重新应用≤3级技术包（按等级、经济成本、减排量排序）
-5. 冲突处理：同一产业同一冲突组的技术，按等级、经济成本、减排量排序选择最优
-6. 输出每个技术包包含的技术和每个县使用的技术包分配
+Optimization logic:
+1. Calculate net emission reduction for each technology using environmental technology impact mechanisms
+2. Technology impact formula: g_after = g_before * (1 + delta)
+3. Calculation steps:
+   a. Calculate total baseline emissions for all counties for each affected sub-industry
+   b. Net emission reduction = sum(total baseline emissions * delta) for all affected sub-industries
+   c. delta < 0: emission reduction contribution (positive), delta > 0: emission increase contribution (negative)
+4. Step-by-step selection strategy:
+   a. Step 1: Apply ≤1 level technology package to all counties (sorted by level, economic cost, emission reduction)
+   b. Step 2: Reapply ≤2 level technology package to counties that still don't meet standards (sorted by level, economic cost, emission reduction)
+   c. Step 3: Reapply ≤3 level technology package to counties that still don't meet standards (sorted by level, economic cost, emission reduction)
+5. Conflict handling: For technologies in the same industry and same conflict group, select the optimal one by sorting by level, economic cost, and emission reduction
+6. Output the technologies included in each technology package and the technology package allocation used by each county
 """
 
 import os
@@ -30,18 +30,18 @@ import functools
 import time
 import logging
 
-# 添加model目录到路径
+# Add model directory to path
 model_path = Path(__file__).parent / "model"
 sys.path.append(str(model_path))
 
 from GasEnviroment_curriculum_learning import GasEnv, GasEnvConfig
 
-# 配置全局日志
+# Configure global logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.StreamHandler()  # 默认输出到控制台
+        logging.StreamHandler()  # Default output to console
     ]
 )
 logger = logging.getLogger(__name__)
@@ -50,14 +50,14 @@ logger = logging.getLogger(__name__)
 
 def get_conflicts_tech(techId, techSet):
     """
-    获取与指定技术冲突的技术索引
-    
+    Get the indices of technologies that conflict with the specified technology
+
     Args:
-        techId: 技术ID
-        techSet: 技术集合DataFrame
-        
+        techId: Technology ID
+        techSet: Technology collection DataFrame
+
     Returns:
-        pandas.Series: 布尔序列，True表示冲突技术
+        pandas.Series: Boolean series, True indicates conflicting technology
     """
     if isinstance(techId, torch.Tensor):
         techId = techId.cpu().numpy()
@@ -69,12 +69,12 @@ def get_conflicts_tech(techId, techSet):
     industry = target_row['class']
     conflict = target_row['技术间的冲突']
 
-    # 处理NaN值：NaN表示无冲突
+    # Handle NaN values: NaN indicates no conflicts
     if pd.isna(conflict):
-        # 如果目标技术无冲突，则返回False序列（没有冲突的技术）
+        # If the target technology has no conflicts, return False series (no conflicting technologies)
         return pd.Series(False, index=techSet.index)
 
-    # 找到同一产业且同一冲突组的技术
+    # Find technologies in the same industry and same conflict group
     condition = (
         (techSet['class'] == industry) &
         (techSet['技术间的冲突'] == conflict)
@@ -84,18 +84,18 @@ def get_conflicts_tech(techId, techSet):
 
 def calculate_total_emissions_needing_reduction(env):
     """
-    计算所有需要减排的县的三种气体总排放量（使用环境中的Total_*_origin数据）
+    Calculate total emissions of three gases for all counties needing emission reduction (using Total_*_origin data from environment)
 
     Args:
-        env: 环境实例
+        env: Environment instance
 
     Returns:
-        dict: 包含NH3、NO3、N_runoff总排放量的字典
+        dict: Dictionary containing total emissions of NH3, NO3, N_runoff
     """
-    # 获取需要技术的县索引
+    # Get indices of counties needing technology
     counties_needing_tech = np.where(env.counties_need_tech)[0]
 
-    # 使用环境中的总排放量数据
+    # Use total emission data from environment
     total_emissions = {
         'NH3': 0.0,
         'NO3': 0.0,
@@ -103,10 +103,10 @@ def calculate_total_emissions_needing_reduction(env):
     }
 
     for county_idx in counties_needing_tech:
-        # 使用环境中的Total_*_origin数据，这些是每个县的总排放量
-        # Total_NH3_origin = 种植业NH3 + 粪便管理NH3 + 粪肥施用NH3
-        # Total_NO3_origin = 氮肥NO3 + 粪肥施用NO3
-        # Total_N_runoff_origin = N流失
+        # Use Total_*_origin data from environment, these are total emissions for each county
+        # Total_NH3_origin = Crop NH3 + Manure management NH3 + Manure application NH3
+        # Total_NO3_origin = Fertilizer NO3 + Manure application NO3
+        # Total_N_runoff_origin = N runoff
         if hasattr(env, 'Total_NH3_origin') and env.Total_NH3_origin is not None:
             total_emissions['NH3'] += env.Total_NH3_origin[county_idx].item()
 
@@ -116,53 +116,53 @@ def calculate_total_emissions_needing_reduction(env):
         if hasattr(env, 'Total_N_runoff_origin') and env.Total_N_runoff_origin is not None:
             total_emissions['N_runoff'] += env.Total_N_runoff_origin[county_idx].item()
 
-    logger.info(f"需要减排的县总数: {len(counties_needing_tech)}")
-    logger.info(f"总排放量 - NH3: {total_emissions['NH3']:.4f}, NO3: {total_emissions['NO3']:.4f}, N_runoff: {total_emissions['N_runoff']:.4f}")
+    logger.info(f"Total counties needing emission reduction: {len(counties_needing_tech)}")
+    logger.info(f"Total emissions - NH3: {total_emissions['NH3']:.4f}, NO3: {total_emissions['NO3']:.4f}, N_runoff: {total_emissions['N_runoff']:.4f}")
 
     return total_emissions
 
 def _calculate_tech_impacts_base(tech_row, env):
     """
-    计算单个技术对所有子产业的影响的基础函数
-    返回每个受影响子产业的详细变化信息
+    Base function to calculate the impact of a single technology on all sub-industries
+    Return detailed change information for each affected sub-industry
 
     Args:
-        tech_row: 技术数据行
-        env: 环境实例
+        tech_row: Technology data row
+        env: Environment instance
 
     Returns:
-        list: 包含(industry, delta, sub, total_change)的元组列表
+        list: List of tuples containing (industry, delta, sub, total_change)
     """
     impacts = []
 
     try:
-        # 获取技术ID
-        tech_id = tech_row.name  # 假设tech_row的索引就是技术ID
+        # Get technology ID
+        tech_id = tech_row.name  # Assume tech_row index is the technology ID
 
-        # 获取技术详情
+        # Get technology details
         line = env._get_line(tech_id)
         class_name = 'crop' if 'crop' in line.index[4].lower() else 'livestock'
         line = line[5:]
 
-        # 获取技术影响的环节（复用环境的方法）
+        # Get technology impact segments (reuse environment methods)
         deltas = env._get_delta(line, class_name)
 
-        # 扩展技术子产业（复用环境的方法）
+        # Expand technology sub-industries (reuse environment methods)
         deltas = env.expand_tech_subindustries(deltas, relaxed=False)
 
-        # 遍历所有受影响的子产业
+        # Iterate through all affected sub-industries
         for industry, delta, subIndustry in deltas:
-            # 获取技术影响的环节的当前状态
+            # Get current state of technology impact segments
             if industry in env.stateMapping:
                 countyState = env.stateMapping[industry]
                 subindustry_classes = env.class_mapping[industry]
 
-                # 遍历技术影响的环节的子环节
+                # Iterate through sub-segments of technology impact segments
                 for sub in subIndustry:
-                    # 获取子环节的索引
+                    # Get index of sub-segment
                     col = env._get_or_create_industry_mapping(sub, subindustry_classes)
 
-                    # 计算该子产业在所有需要减排的县的总基础排放量
+                    # Calculate total baseline emissions of this sub-industry across all counties needing emission reduction
                     total_before_value = 0.0
                     for county_idx in np.where(env.counties_need_tech)[0]:
                         try:
@@ -171,30 +171,30 @@ def _calculate_tech_impacts_base(tech_row, env):
                         except (IndexError, AttributeError):
                             continue
 
-                    # 使用正确的公式：总变化量 = 总基础排放量 * delta
-                    if total_before_value > 0:  # 只计算有排放的子产业
+                    # Use correct formula: total change = total baseline emissions * delta
+                    if total_before_value > 0:  # Only calculate for sub-industries with emissions
                         total_change = total_before_value * delta
                         impacts.append((industry, delta, sub, total_change))
 
     except Exception as e:
-        logger.warning(f"计算技术影响基础数据失败: {e}")
+        logger.warning(f"Failed to calculate base technology impact data: {e}")
 
     return impacts
 
 def calculate_tech_comprehensive_impacts(tech_row, env):
     """
-    统一计算单个技术的综合影响：净减排量 + 各种气体和产量的影响
+    Unified calculation of comprehensive impact of a single technology: net emission reduction + various gas and yield impacts
 
     Args:
-        tech_row: 技术数据行
-        env: 环境实例
+        tech_row: Technology data row
+        env: Environment instance
 
     Returns:
-        dict: 包含净减排量和各种气体产量影响的字典
+        dict: Dictionary containing net emission reduction and various gas yield impacts
     """
-    # 初始化结果字典
+    # Initialize result dictionary
     impacts = {
-        'net_reduction': 0.0,  # 净减排量
+        'net_reduction': 0.0,  # Net emission reduction
         'NH3_reduction': 0.0,
         'NO3_reduction': 0.0,
         'N_runoff_reduction': 0.0,
@@ -205,18 +205,18 @@ def calculate_tech_comprehensive_impacts(tech_row, env):
     }
 
     try:
-        # 使用基础函数获取所有子产业的影响
+        # Use base function to get impacts on all sub-industries
         impacts_base = _calculate_tech_impacts_base(tech_row, env)
 
-        # 根据子产业名称分类气体影响
+        # Classify gas impacts based on sub-industry names
         for industry, delta, sub, total_change in impacts_base:
             sub_lower = sub.lower()
 
-            # 累加净减排量（排除某些特定的子产业）
+            # Accumulate net emission reduction (excluding certain specific sub-industries)
             if not any(x.lower() in sub_lower for x in ['organic_carbon', 'CH4', 'N2O', 'Yield']):
                 impacts['net_reduction'] += total_change
 
-            # 分类累加各种气体和产量的影响
+            # Classify and accumulate impacts of various gases and yields
             if 'nh3' in sub_lower:
                 impacts['NH3_reduction'] += total_change
             elif 'no3' in sub_lower:
@@ -237,38 +237,38 @@ def calculate_tech_comprehensive_impacts(tech_row, env):
                 impacts['yield_change'] += total_change
 
     except Exception as e:
-        logger.warning(f"计算技术综合影响失败: {e}")
+        logger.warning(f"Failed to calculate comprehensive technology impacts: {e}")
 
     return impacts
 
 def select_optimal_techs_by_level_and_reduction(env, max_level):
     """
-    根据技术等级、经济成本和净减排量排序选择最优技术组合，考虑技术冲突
-    排序优先级：技术等级升序 > 经济成本升序 > 净减排量降序（负值越小越优先）
-    使用环境中的技术影响机制：g_after = g_before * (1 + delta)
+    Select optimal technology combination based on technology level, economic cost, and net emission reduction, considering technology conflicts
+    Sorting priority: technology level ascending > economic cost ascending > net emission reduction descending (more negative values have higher priority)
+    Use technology impact mechanism in environment: g_after = g_before * (1 + delta)
 
     Args:
-        env: 环境实例
-        max_level: 最大技术等级 (1, 2, 3)
+        env: Environment instance
+        max_level: Maximum technology level (1, 2, 3)
 
     Returns:
-        tuple: (选中的技术ID列表, 技术包信息字典)
+        tuple: (Selected technology ID list, technology package information dictionary)
     """
     tech_set = env.tech_set
 
-    # 筛选指定等级内的技术
+    # Filter technologies within specified level
     available_techs = tech_set[tech_set['技术分级'] <= max_level].copy()
     if len(available_techs) == 0:
-        logger.warning(f"没有找到≤{max_level}级的技术")
+        logger.warning(f"No technologies found with level ≤{max_level}")
         return [], {}
 
-    logger.info(f"开始选择≤{max_level}级技术，最优技术组合...")
+    logger.info(f"Starting to select ≤{max_level} level technologies, optimal technology combination...")
 
-    # 计算需要减排的县的排放总量（用于信息显示）
+    # Calculate total emissions from counties needing emission reduction (for information display)
     total_emissions = calculate_total_emissions_needing_reduction(env)
 
-    # 串行计算所有可用技术的净减排量
-    logger.info(f"计算≤{max_level}级技术({len(available_techs)}个)的净减排量...")
+    # Serially calculate net emission reduction for all available technologies
+    logger.info(f"Calculating net emission reduction for ≤{max_level} level technologies ({len(available_techs)})...")
     start_time = time.time()
     tech_reductions = []
     for idx, tech_row in available_techs.iterrows():
@@ -279,35 +279,35 @@ def select_optimal_techs_by_level_and_reduction(env, max_level):
     elapsed_time = end_time - start_time
     logger.info(".2f")
 
-    # 按技术等级、经济成本和净减排量排序：等级升序 > 经济成本升序 > 减排量升序
+    # Sort by technology level, economic cost, and net emission reduction: level ascending > cost ascending > reduction ascending
     tech_reductions.sort(key=lambda x: (x[2]['技术分级'], x[2]['经济成本'], x[1]))
 
-    logger.info(f"计算了 {len(tech_reductions)} 个≤{max_level}级技术的净减排量")
-    logger.info("前10个经济成本最低的技术:")
+    logger.info(f"Calculated net emission reduction for {len(tech_reductions)} ≤{max_level} level technologies")
+    logger.info("Top 10 technologies with lowest economic cost:")
     for i, (idx, net_reduction, row) in enumerate(tech_reductions[:10]):
-        reduction_type = "净减排" if net_reduction <= 0 else "净增排"
+        reduction_type = "Net reduction" if net_reduction <= 0 else "Net increase"
         value = abs(net_reduction)
-        logger.info(f"  {i+1}. {row['Mitigation strategy']} (等级:{row['技术分级']}, 成本:{row['经济成本']:.2f}, {reduction_type}:{value:.4f})")
+        logger.info(f"  {i+1}. {row['Mitigation strategy']} (Level:{row['技术分级']}, Cost:{row['经济成本']:.2f}, {reduction_type}:{value:.4f})")
 
     selected_techs = []
-    conflict_groups_used = set()  # 记录已使用的冲突组
+    conflict_groups_used = set()  # Record used conflict groups
 
     for tech_idx, net_reduction, tech_row in tech_reductions:
-        # 检查技术是否有冲突
+        # Check if technology has conflicts
         conflict_value = tech_row['技术间的冲突']
 
-        # 如果技术没有冲突（NaN），直接采用
+        # If technology has no conflicts (NaN), adopt directly
         if pd.isna(conflict_value):
             selected_techs.append(tech_idx)
-            reduction_type = "净减排" if net_reduction <= 0 else "净增排"
-            logger.info(f"选择技术: {tech_row['Mitigation strategy']}, 种类: {tech_row['Crop species'] if tech_row['class'] == 'crop' else tech_row['Livestock species']} (等级:{tech_row['技术分级']}, {reduction_type}:{abs(net_reduction):.4f}, 成本:{tech_row['经济成本']:.2f}) - 无冲突")
+            reduction_type = "Net reduction" if net_reduction <= 0 else "Net increase"
+            logger.info(f"Selected technology: {tech_row['Mitigation strategy']}, Type: {tech_row['Crop species'] if tech_row['class'] == 'crop' else tech_row['Livestock species']} (Level:{tech_row['技术分级']}, {reduction_type}:{abs(net_reduction):.4f}, Cost:{tech_row['经济成本']:.2f}) - No conflicts")
             continue
 
-        # 如果有冲突，进行冲突检测
+        # If there are conflicts, perform conflict detection
         conflict_key = (tech_row['class'], conflict_value)
 
         if conflict_key in conflict_groups_used:
-            # 如果冲突组已被使用，检查当前技术是否更优
+            # If conflict group is already used, check if current technology is better
             existing_tech_idx = None
             for selected_idx in selected_techs:
                 selected_row = available_techs.loc[selected_idx] if selected_idx in available_techs.index else tech_set.iloc[selected_idx]
@@ -322,36 +322,36 @@ def select_optimal_techs_by_level_and_reduction(env, max_level):
                 existing_impacts = calculate_tech_comprehensive_impacts(existing_row, env)
                 existing_net_reduction = existing_impacts['net_reduction']
 
-                # 比较：等级升序 > 经济成本升序 > 净减排量降序（负值越小越优先）
+                # Compare: level ascending > economic cost ascending > net emission reduction descending (more negative values have higher priority)
                 current_priority = (tech_row['技术分级'], tech_row['经济成本'], net_reduction)
                 existing_priority = (existing_row['技术分级'], existing_row['经济成本'], existing_net_reduction)
 
                 if current_priority < existing_priority:
-                    # 当前技术更优，替换现有技术
+                    # Current technology is better, replace existing technology
                     selected_techs.remove(existing_tech_idx)
                     selected_techs.append(tech_idx)
-                    reduction_type_existing = "净减排" if existing_net_reduction <= 0 else "净增排"
-                    reduction_type_current = "净减排" if net_reduction <= 0 else "净增排"
-                    logger.info(f"替换技术: {existing_row['Mitigation strategy']} (等级:{existing_row['技术分级']}, {reduction_type_existing}:{abs(existing_net_reduction):.4f}) -> {tech_row['Mitigation strategy']} (等级:{tech_row['技术分级']}, {reduction_type_current}:{abs(net_reduction):.4f})")
-                # else: 保持现有技术
+                    reduction_type_existing = "Net reduction" if existing_net_reduction <= 0 else "Net increase"
+                    reduction_type_current = "Net reduction" if net_reduction <= 0 else "Net increase"
+                    logger.info(f"Replaced technology: {existing_row['Mitigation strategy']} (Level:{existing_row['技术分级']}, {reduction_type_existing}:{abs(existing_net_reduction):.4f}) -> {tech_row['Mitigation strategy']} (Level:{tech_row['技术分级']}, {reduction_type_current}:{abs(net_reduction):.4f})")
+                # else: Keep existing technology
             continue
         else:
-            # 新的冲突组，直接添加
+            # New conflict group, add directly
             selected_techs.append(tech_idx)
             conflict_groups_used.add(conflict_key)
-            reduction_type = "净减排" if net_reduction <= 0 else "净增排"
-            logger.info(f"选择技术: {tech_row['Mitigation strategy']}, 种类: {tech_row['Crop species'] if tech_row['class'] == 'crop' else tech_row['Livestock species']} (等级:{tech_row['技术分级']}, {reduction_type}:{abs(net_reduction):.4f}, 成本:{tech_row['经济成本']:.2f})")
+            reduction_type = "Net reduction" if net_reduction <= 0 else "Net increase"
+            logger.info(f"Selected technology: {tech_row['Mitigation strategy']}, Type: {tech_row['Crop species'] if tech_row['class'] == 'crop' else tech_row['Livestock species']} (Level:{tech_row['技术分级']}, {reduction_type}:{abs(net_reduction):.4f}, Cost:{tech_row['经济成本']:.2f})")
 
-    # 统计各分级技术数量
+    # Count number of technologies at each level
     level_counts = {}
     for tech_idx in selected_techs:
         row = available_techs.loc[tech_idx] if tech_idx in available_techs.index else tech_set.iloc[tech_idx]
         level = row['技术分级']
         level_counts[level] = level_counts.get(level, 0) + 1
 
-    logger.info(f"最终选择了 {len(selected_techs)} 个≤{max_level}级最优技术，分级分布: {level_counts}")
+    logger.info(f"Finally selected {len(selected_techs)} ≤{max_level} level optimal technologies, level distribution: {level_counts}")
 
-    # 创建技术包信息
+    # Create technology package information
     tech_package_info = {
         'max_level': max_level,
         'selected_techs': selected_techs,
@@ -362,10 +362,10 @@ def select_optimal_techs_by_level_and_reduction(env, max_level):
     for tech_idx in selected_techs:
         row = available_techs.loc[tech_idx] if tech_idx in available_techs.index else tech_set.iloc[tech_idx]
 
-        # 使用统一函数计算所有影响
+        # Use unified function to calculate all impacts
         comprehensive_impacts = calculate_tech_comprehensive_impacts(row, env)
         net_reduction = comprehensive_impacts['net_reduction']
-        reduction_type = "净减排" if net_reduction <= 0 else "净增排"
+        reduction_type = "Net reduction" if net_reduction <= 0 else "Net increase"
 
         tech_package_info['tech_details'].append({
             'tech_idx': tech_idx,
@@ -377,7 +377,7 @@ def select_optimal_techs_by_level_and_reduction(env, max_level):
             'class': row['class'],
             'species': row['Livestock species'] if row['class'] != 'crop' else row['Crop species'],
             'conflict': '' if pd.isna(row['技术间的冲突']) else row['技术间的冲突'],
-            # 添加气体和产量影响信息
+            # Add gas and yield impact information
             'NH3_reduction': comprehensive_impacts['NH3_reduction'],
             'NO3_reduction': comprehensive_impacts['NO3_reduction'],
             'N_runoff_reduction': comprehensive_impacts['N_runoff_reduction'],
@@ -391,15 +391,15 @@ def select_optimal_techs_by_level_and_reduction(env, max_level):
 
 def check_counties_meeting_targets(env):
     """
-    检查哪些县已经达标
-    
+    Check which counties have met the targets
+
     Args:
-        env: 环境实例
-        
+        env: Environment instance
+
     Returns:
-        numpy.ndarray: 布尔数组，True表示该县所有指标都达标
+        numpy.ndarray: Boolean array, True indicates the county has met all targets
     """
-    # 所有指标都达标的县
+    # Counties that meet all targets
     all_targets_met = (
         (env.gap_NO3.squeeze() <= 0) & 
         (env.gap_NH3.squeeze() <= 0) & 
@@ -414,15 +414,15 @@ def check_counties_meeting_targets(env):
 
 def apply_techs_to_county_batch(county_batch, env, selected_tech_ids):
     """
-    为一批县应用选定的技术组合
+    Apply selected technology combination to a batch of counties
 
     Args:
-        county_batch: 县批次列表 [(batch_idx, county_idx), ...]
-        env: 环境实例
-        selected_tech_ids: 选定的技术ID列表
+        county_batch: County batch list [(batch_idx, county_idx), ...]
+        env: Environment instance
+        selected_tech_ids: Selected technology ID list
 
     Returns:
-        dict: 该批次的统计结果
+        dict: Statistical results for this batch
     """
     batch_actions = 0
     batch_applied_techs = 0
@@ -432,11 +432,11 @@ def apply_techs_to_county_batch(county_batch, env, selected_tech_ids):
         county_name = env.IDs['Counties'].iloc[county_idx]
         county_applied_techs = 0
 
-        # 应用选中的技术
+        # Apply selected technologies
         for tech_idx in selected_tech_ids:
-            # 检查技术是否已经应用过
+            # Check if technology has already been applied
             if env.state['Tech_selected'][county_idx, tech_idx] == 0:
-                # 编码动作：需要将county_idx转换为在counties_need_tech中的索引
+                # Encode action: need to convert county_idx to index in counties_need_tech
                 all_counties_need_tech = np.where(env.counties_need_tech)[0]
                 county_need_tech_pos = np.where(all_counties_need_tech == county_idx)[0][0]
                 action = county_need_tech_pos * env.numTech + tech_idx
@@ -447,7 +447,7 @@ def apply_techs_to_county_batch(county_batch, env, selected_tech_ids):
                     batch_applied_techs += 1
                     county_applied_techs += 1
                 except Exception as e:
-                    logger.error(f"县 {county_name} 应用技术 {tech_idx} 时出错: {e}")
+                    logger.error(f"Error applying technology {tech_idx} to county {county_name}: {e}")
                     continue
 
         batch_results.append({
@@ -465,65 +465,65 @@ def apply_techs_to_county_batch(county_batch, env, selected_tech_ids):
 
 def apply_techs_to_counties_parallel(env, selected_tech_ids, target_counties=None, num_workers=None):
     """
-    使用多线程并行地为县应用选定的技术组合
+    Apply selected technology combination to counties using multithreading in parallel
 
     Args:
-        env: 环境实例
-        selected_tech_ids: 选定的技术ID列表
-        target_counties: 目标县索引列表，如果为None则应用到所有需要技术的县
-        num_workers: 工作线程数，默认自动选择
+        env: Environment instance
+        selected_tech_ids: Selected technology ID list
+        target_counties: Target county index list, if None then apply to all counties needing technology
+        num_workers: Number of worker threads, automatically selected by default
 
     Returns:
-        tuple: (应用的技术数量, 总执行动作数)
+        tuple: (Number of applied technologies, total number of executed actions)
     """
     if not selected_tech_ids:
-        logger.warning("没有技术需要应用，跳过")
+        logger.warning("No technologies need to be applied, skip")
         return 0, 0
 
-    # 确定目标县
+    # Determine target counties
     if target_counties is None:
         counties_need_tech_indices = np.where(env.counties_need_tech)[0]
     else:
-        # 只处理指定的县，且这些县需要在counties_need_tech中
+        # Only process specified counties, and these counties need to be in counties_need_tech
         counties_need_tech_indices = np.where(env.counties_need_tech)[0]
         target_counties = np.array(target_counties)
-        # 取交集
+        # Take intersection
         counties_need_tech_indices = np.intersect1d(counties_need_tech_indices, target_counties)
 
     if len(counties_need_tech_indices) == 0:
-        logger.warning("没有需要技术的县，跳过")
+        logger.warning("No counties need technology, skip")
         return 0, 0
 
-    logger.info(f"开始并行应用技术到 {len(counties_need_tech_indices)} 个县...")
+    logger.info(f"Starting parallel application of technologies to {len(counties_need_tech_indices)} counties...")
 
-    # 设置工作线程数
+    # Set number of worker threads
     if num_workers is None:
-        num_workers = min(cpu_count(), 24)  # 最多使用8个线程
+        num_workers = min(cpu_count(), 24)  # Use at most 24 threads
 
-    # 将县分成多个批次
+    # Divide counties into multiple batches
     county_list = list(enumerate(counties_need_tech_indices))
     batch_size = max(1, len(county_list) // num_workers)
     county_batches = [county_list[i:i + batch_size] for i in range(0, len(county_list), batch_size)]
 
-    logger.info(f"使用 {num_workers} 个线程并行处理 {len(county_list)} 个县")
-    logger.info(f"每个线程处理约 {batch_size} 个县")
+    logger.info(f"Using {num_workers} threads to process {len(county_list)} counties in parallel")
+    logger.info(f"Each thread handles approximately {batch_size} counties")
 
     start_time = time.time()
 
-    # 创建一个线程安全的计数器来跟踪总进度
+    # Create a thread-safe counter to track total progress
     total_actions = 0
     total_applied_techs = 0
     completed_batches = 0
 
-    # 使用线程池并行处理县批次
+    # Use thread pool to process county batches in parallel
     with ThreadPoolExecutor(max_workers=num_workers) as executor:
-        # 提交所有批次任务
+        # Submit all batch tasks
         future_to_batch = {
             executor.submit(apply_techs_to_county_batch, batch, env, selected_tech_ids): batch_idx
             for batch_idx, batch in enumerate(county_batches)
         }
 
-        # 收集结果
+        # Collect results
         for future in as_completed(future_to_batch):
             try:
                 batch_result = future.result()
@@ -531,46 +531,46 @@ def apply_techs_to_counties_parallel(env, selected_tech_ids, target_counties=Non
                 total_applied_techs += batch_result['batch_applied_techs']
                 completed_batches += 1
 
-                # 显示批次完成信息
+                # Display batch completion information
                 batch_idx = future_to_batch[future]
                 batch_counties = len(batch_result['batch_results'])
-                logger.info(f"完成批次 {completed_batches}/{len(county_batches)} ({batch_counties} 个县, {batch_result['batch_applied_techs']} 个技术)")
+                logger.info(f"Completed batch {completed_batches}/{len(county_batches)} ({batch_counties} counties, {batch_result['batch_applied_techs']} technologies)")
 
             except Exception as e:
-                logger.error(f"批次处理失败: {e}")
+                logger.error(f"Batch processing failed: {e}")
                 completed_batches += 1
 
     end_time = time.time()
     elapsed_time = end_time - start_time
 
-    logger.info("并行技术应用完成！")
-    logger.info(f"总共应用了 {total_applied_techs} 个技术")
-    logger.info(f"总执行动作数: {total_actions}")
+    logger.info("Parallel technology application completed!")
+    logger.info(f"Total applied {total_applied_techs} technologies")
+    logger.info(f"Total executed actions: {total_actions}")
     logger.info(".2f")
 
     return total_applied_techs, total_actions
 
 def apply_tech_package_to_counties(env, target_counties, selected_tech_ids, tech_package_info, num_workers=None, collect_impacts=True):
     """
-    为指定县应用技术包，并记录县的技术包分配和每个技术对每个县的影响
+    Apply technology package to specified counties, and record county technology package allocation and impact of each technology on each county
 
     Args:
-        env: 环境实例
-        target_counties: 目标县索引列表
-        selected_tech_ids: 技术包中的技术ID列表
-        tech_package_info: 技术包信息字典
-        num_workers: 并行应用技术的线程数，默认自动选择
-        collect_impacts: 是否收集技术影响数据，默认True
+        env: Environment instance
+        target_counties: Target county index list
+        selected_tech_ids: Technology ID list in technology package
+        tech_package_info: Technology package information dictionary
+        num_workers: Number of parallel technology application threads, automatically selected by default
+        collect_impacts: Whether to collect technology impact data, default True
 
     Returns:
-        tuple: (应用的技术数量, 总执行动作数, 县的技术包分配字典, 技术影响数据字典)
+        tuple: (Number of applied technologies, total number of executed actions, county technology package allocation dictionary, technology impact data dictionary)
     """
-    logger.info(f"开始应用≤{tech_package_info['max_level']}级技术包到 {len(target_counties)} 个县...")
+    logger.info(f"Starting application of ≤{tech_package_info['max_level']} level technology package to {len(target_counties)} counties...")
 
-    # 初始化县的技术包分配记录
+    # Initialize county technology package assignment records
     county_package_assignment = {}
 
-    # 初始化技术影响数据记录
+    # Initialize technology impact data records
     tech_county_impacts = {
         'step_level': tech_package_info['max_level'],
         'applied_techs': selected_tech_ids,
@@ -578,32 +578,32 @@ def apply_tech_package_to_counties(env, target_counties, selected_tech_ids, tech
     } if collect_impacts else None
 
     if not selected_tech_ids:
-        logger.warning("技术包为空，跳过应用")
+        logger.warning("Technology package is empty, skip application")
         return 0, 0, county_package_assignment, tech_county_impacts
 
-    # 确定目标县（只处理指定的县）
+    # Determine target counties (only process specified counties)
     target_counties = np.array(target_counties)
 
-    logger.info(f"目标县数量: {len(target_counties)}")
+    logger.info(f"Number of target counties: {len(target_counties)}")
 
-    # 初始化变量
+    # Initialize variables
     total_actions = 0
     applied_techs = 0
 
 
-    # 使用串行方式
-    logger.info("使用串行方式应用技术...")
+    # Use serial method
+    logger.info("Using serial method to apply technologies...")
     total_actions = 0
     applied_techs = 0
 
     for i, county_idx in enumerate(target_counties):
         county_name = env.IDs['Counties'].iloc[county_idx]
-        logger.info(f"处理第 {i+1}/{len(target_counties)} 个县: {county_name}")
+        logger.info(f"Processing county {i+1}/{len(target_counties)}: {county_name}")
 
-        # 记录该县使用的是哪个技术包
+        # Record which technology package this county uses
         county_package_assignment[county_idx] = tech_package_info['max_level']
 
-        # 初始化该县的影响数据
+        # Initialize impact data for this county
         if collect_impacts and county_idx not in tech_county_impacts['county_impacts']:
             tech_county_impacts['county_impacts'][county_idx] = {
                 'county_name': county_name,
@@ -620,19 +620,19 @@ def apply_tech_package_to_counties(env, target_counties, selected_tech_ids, tech
                 }
             }
 
-        # 如果需要收集影响数据，记录应用技术前的初始状态
+        # If impact data needs to be collected, record initial state before applying technology
         initial_state = {}
         if collect_impacts and hasattr(env, 'state') and env.state:
             for key, value in env.state.items():
                 if key != 'Tech_selected':
-                    # 对于二维状态，提取该县的值
+                    # For 2D states, extract the value for this county
                     initial_state[key] = float(value[county_idx].item())
             initial_state['yield'] = float(env.stateMapping['畜牧业产量'][county_idx].sum().item()) + float(env.stateMapping['种植业产量'][county_idx].sum().item())
 
-        # 应用选中的技术
+        # Apply selected technologies
         county_applied_techs = 0
         for tech_idx in selected_tech_ids:
-            # 检查技术是否已经应用过
+            # Check if technology has already been applied
             if env.state['Tech_selected'][county_idx, tech_idx] == 0:
                 action = county_idx * env.numTech + tech_idx
 
@@ -642,12 +642,12 @@ def apply_tech_package_to_counties(env, target_counties, selected_tech_ids, tech
                 applied_techs += 1
                 county_applied_techs += 1
 
-                # 如果需要收集影响数据，则从返回的state中提取影响
+                # If impact data needs to be collected, extract impact from returned state
                 if collect_impacts:
                     tech_row = env.tech_set.iloc[tech_idx]
                     tech_name = tech_row['Mitigation strategy']
 
-                    # 从state中提取技术应用后的气体指标
+                    # Extract gas indicators from state after technology application
                     impact_data = {
                         'county_name': county_name,
                         'NH3_change': 0.0,
@@ -660,19 +660,19 @@ def apply_tech_package_to_counties(env, target_counties, selected_tech_ids, tech
                         'net_reduction': 0.0
                     }
 
-                    # 计算技术应用后的状态变化
+                    # Calculate state changes after technology application
                     for key, value in state.items():
                         if key == 'Tech_selected':
                             continue
-                        # 根据状态key分类气体影响
+                        # Classify gas impacts based on state key
                         key_lower = key.lower()
-                        # 对于二维状态，提取该县的当前值
+                        # For 2D states, extract current value for this county
                         current_value = float(value[county_idx].item())
 
-                        # 计算变化量（当前值减去初始值）
+                        # Calculate change amount (current value minus initial value)
                         initial_value = initial_state.get(key, 0.0)
                         change = current_value - initial_value
-                        # 只记录有变化的状态，避免累加0值
+                        # Only record states with changes, avoid accumulating 0 values
                         if change != 0:
                             if 'nh3' in key_lower:
                                 impact_data['NH3_change'] += change
@@ -698,7 +698,7 @@ def apply_tech_package_to_counties(env, target_counties, selected_tech_ids, tech
                         change = float(env.stateMapping['畜牧业产量'][county_idx].sum().item()) + float(env.stateMapping['种植业产量'][county_idx].sum().item()) - initial_state['yield']
                         impact_data['yield_change'] += change
 
-                    # 保存技术影响数据
+                    # Save technology impact data
                     tech_county_impacts['county_impacts'][county_idx]['applied_techs'].append({
                         'tech_idx': tech_idx,
                         'tech_name': tech_name,
@@ -709,48 +709,48 @@ def apply_tech_package_to_counties(env, target_counties, selected_tech_ids, tech
                     #     if value != 0:
                     #         logger.info(f"{key}: {value}")
 
-                    # 累加到县的总影响
+                    # Accumulate to county's total impacts
                     for key in tech_county_impacts['county_impacts'][county_idx]['total_impacts']:
                         tech_county_impacts['county_impacts'][county_idx]['total_impacts'][key] += impact_data[key]
 
-                    # 更新initial state，使其反映应用技术后的当前状态
-                    # 这样下一次应用技术时会基于前一个技术的最终状态计算影响
+                    # Update initial state to reflect current state after technology application
+                    # This way, when applying technology next time, impact will be calculated based on the final state of the previous technology
                     for key, value in state.items():
                         if key != 'Tech_selected':
-                            # 更新该县的初始状态为应用技术后的状态
+                            # Update the initial state of this county to the state after technology application
                             initial_state[key] = float(value[county_idx].item())
                     initial_state['yield'] = float(env.stateMapping['畜牧业产量'][county_idx].sum().item()) + float(env.stateMapping['种植业产量'][county_idx].sum().item())
         
-        logger.info(f"县 {county_name} 实际应用了 {county_applied_techs} 个技术")
+        logger.info(f"County {county_name} actually applied {county_applied_techs} technologies")
 
-        # 每处理10个县打印一次进度
+        # Print progress every 10 counties processed
         if (i + 1) % 10 == 0:
-            logger.info(f"已处理 {i+1} 个县，总共应用了 {applied_techs} 个技术")
+            logger.info(f"Processed {i+1} counties, total applied {applied_techs} technologies")
 
-        logger.info("串行技术应用完成！")
-        logger.info(f"总共应用了 {applied_techs} 个技术")
-        logger.info(f"总执行动作数: {total_actions}")
+        logger.info("Serial technology application completed!")
+        logger.info(f"Total applied {applied_techs} technologies")
+        logger.info(f"Total executed actions: {total_actions}")
 
     return applied_techs, total_actions, county_package_assignment, tech_county_impacts
 
 def save_tech_package_to_excel(tech_package, step_name, output_dir="results", suffix="level_based_stepwise_techs"):
     """
-    立即保存单个技术包信息到Excel文件
+    Immediately save individual technology package information to Excel file
 
     Args:
-        tech_package: 技术包信息字典
-        step_name: 步骤名称 (如 'step_1')
-        output_dir: 输出目录
-        suffix: 文件名后缀
+        tech_package: Technology package information dictionary
+        step_name: Step name (e.g. 'step_1')
+        output_dir: Output directory
+        suffix: File name suffix
     """
     if not tech_package or 'tech_details' not in tech_package:
         return
 
-    # 创建输出目录
+    # Create output directory
     full_output_dir = os.path.join(output_dir, suffix)
     os.makedirs(full_output_dir, exist_ok=True)
 
-    # 准备技术包数据
+    # Prepare technology package data
     tech_package_data = []
     for tech_detail in tech_package['tech_details']:
         tech_package_data.append({
@@ -765,7 +765,7 @@ def save_tech_package_to_excel(tech_package, step_name, output_dir="results", su
             '产业类型': tech_detail['class'],
             '物种': tech_detail.get('species', ''),
             '冲突组': '' if pd.isna(tech_detail['conflict']) else tech_detail['conflict'],
-            # 添加气体和产量影响信息
+            # Add gas and yield impact information
             'NH3减排量': tech_detail.get('NH3_reduction', 0.0),
             'NO3减排量': tech_detail.get('NO3_reduction', 0.0),
             'N_runoff减排量': tech_detail.get('N_runoff_reduction', 0.0),
@@ -775,29 +775,29 @@ def save_tech_package_to_excel(tech_package, step_name, output_dir="results", su
             '产量变化': tech_detail.get('yield_change', 0.0)
         })
 
-    # 保存到Excel
+    # Save to Excel
     if tech_package_data:
         tech_package_df = pd.DataFrame(tech_package_data)
         tech_package_file = os.path.join(full_output_dir, f"{step_name}_tech_package.xlsx")
         tech_package_df.to_excel(tech_package_file, index=False)
-        logger.info(f"{step_name.upper()} 技术包信息已保存到: {tech_package_file}")
+        logger.info(f"{step_name.upper()} technology package information saved to: {tech_package_file}")
 
 def stepwise_level_based_tech_optimization(env_config, use_parallel=False, num_workers=None):
     """
-    分步等级优化：按技术等级分步优化，先1级，再1+2级，最后1+2+3级
-    每个等级内按等级、经济成本、减排量排序，考虑技术冲突，根据达标情况应用合适的技术包
+    Step-by-step level optimization: Optimize by technology level in steps, first level 1, then 1+2, finally 1+2+3
+    Within each level, sort by level, economic cost, emission reduction, consider technology conflicts, apply appropriate technology packages based on compliance status
 
     Args:
-        env: 环境实例
-        env_config: 环境配置对象，用于创建新的环境实例
-        use_parallel: 是否使用并行应用技术，默认False
-        num_workers: 并行应用技术的线程数，默认自动选择
+        env: Environment instance
+        env_config: Environment configuration object, used to create new environment instances
+        use_parallel: Whether to use parallel technology application, default False
+        num_workers: Number of parallel technology application threads, automatically selected by default
 
     Returns:
-        dict: 优化统计和县的技术包分配信息
+        dict: Optimization statistics and county technology package allocation information
     """
     logger.info("=" * 60)
-    logger.info("开始分步等级优化（按技术等级分步 + 等级、经济成本、减排量排序）")
+    logger.info("Starting step-by-step level optimization (step by technology level + sort by level, economic cost, emission reduction)")
     logger.info("=" * 60)
 
     stats = {
@@ -806,19 +806,19 @@ def stepwise_level_based_tech_optimization(env_config, use_parallel=False, num_w
         'step_3': {'applied_techs': 0, 'actions': 0, 'counties_met': 0, 'max_level': 3, 'tech_package': {}}
     }
 
-    # 记录所有县的技术包分配
+    # Record technology package allocation for all counties
     all_county_assignments = {}
 
-    # 第一步：为所有需要技术的县应用≤1级技术包
+    # Step 1: Apply ≤1 level technology package to all counties needing technology
     logger.info(f"\n" + "="*50)
     env_step1 = GasEnv(env_config)
     env_step1.reset()
-    logger.info("第一步：为所有需要减排的县应用≤1级技术包")
+    logger.info("Step 1: Apply ≤1 level technology package to all counties needing emission reduction")
     logger.info("="*50)
 
     total_counties = env_step1.numCounty
     counties_need_tech_indices = np.where(env_step1.counties_need_tech)[0]
-    logger.info(f"总县数: {total_counties}, 需要减排的县数: {len(counties_need_tech_indices)}")
+    logger.info(f"Total counties: {total_counties}, counties needing emission reduction: {len(counties_need_tech_indices)}")
 
     if len(counties_need_tech_indices) > 0:
         selected_tech_ids_1, tech_package_1 = select_optimal_techs_by_level_and_reduction(env_step1, max_level=1)
@@ -833,33 +833,33 @@ def stepwise_level_based_tech_optimization(env_config, use_parallel=False, num_w
             stats['step_1']['actions'] = actions_1
             all_county_assignments.update(assignments_1)
         else:
-            logger.warning("没有找到1级技术")
+            logger.warning("No level 1 technologies found")
 
-    # 检查第一步后的达标情况
+    # Check compliance status after step 1
     counties_met_after_step1 = check_counties_meeting_targets(env_step1)
     counties_met_count_1 = counties_met_after_step1.sum()
     stats['step_1']['counties_met'] = counties_met_count_1
 
-    logger.info(f"第一步应用后达标情况:")
-    logger.info(f"达标县数: {counties_met_count_1}/{total_counties} ({counties_met_count_1/total_counties*100:.1f}%)")
+    logger.info(f"Compliance status after step 1 application:")
+    logger.info(f"Compliant counties: {counties_met_count_1}/{total_counties} ({counties_met_count_1/total_counties*100:.1f}%)")
 
-    # 第一步完成后立即保存技术包信息
+    # Save technology package information immediately after step 1
     if stats['step_1']['tech_package']:
         save_tech_package_to_excel(stats['step_1']['tech_package'], 'step_1')
-        logger.info("第一步技术包已保存完成")
+        logger.info("Step 1 technology package saved successfully")
 
-    # 第二步：为未达标县应用≤2级技术包
+    # Step 2: Apply ≤2 level technology package to counties that don't meet standards
     counties_not_met_after_step1 = np.where(~counties_met_after_step1)[0]
     if len(counties_not_met_after_step1) > 0:
         logger.info(f"\n" + "="*50)
-        logger.info(f"第二步：为 {len(counties_not_met_after_step1)} 个未达标县重新应用≤2级技术包")
+        logger.info(f"Step 2: Reapply ≤2 level technology package to {len(counties_not_met_after_step1)} counties that don't meet standards")
         logger.info("="*50)
 
-        # 为第二步创建新的环境实例，确保干净的状态
-        logger.info("为第二步创建新的环境实例...")
+        # Create new environment instance for step 2 to ensure clean state
+        logger.info("Creating new environment instance for step 2...")
         env_step2 = GasEnv(env_config)
         env_step2.reset()
-        logger.info("第二步环境实例创建完成")
+        logger.info("Step 2 environment instance created successfully")
 
         selected_tech_ids_2, tech_package_2 = select_optimal_techs_by_level_and_reduction(env_step2, max_level=2)
         stats['step_2']['tech_package'] = tech_package_2
@@ -873,48 +873,48 @@ def stepwise_level_based_tech_optimization(env_config, use_parallel=False, num_w
             stats['step_2']['actions'] = actions_2
             all_county_assignments.update(assignments_2)
 
-        # 检查第二步后的达标情况
+        # Check compliance status after step 2
         counties_met_after_step2 = check_counties_meeting_targets(env_step2)
         counties_met_count_2 = counties_met_after_step2.sum()
         stats['step_2']['counties_met'] = counties_met_count_2
 
-        # 计算第一级技术包符合要求的县与1，2技术包的县的并集
-        # 即所有在第一步或第二步后达标的县
+        # Calculate union of counties that meet requirements for level 1 technology package and 1-2 level technology package
+        # That is, all counties that meet standards after step 1 or step 2
         counties_met_union = np.logical_or(counties_met_after_step1, counties_met_after_step2)
         counties_met_union_count = counties_met_union.sum()
 
-        logger.info(f"第一级技术包符合要求的县与1，2技术包的县的并集:")
-        logger.info(f"并集达标县数: {counties_met_union_count}/{total_counties} ({counties_met_union_count/total_counties*100:.1f}%)")
-        logger.info(f"第一步达标县数: {counties_met_count_1}")
-        logger.info(f"第二步达标县数: {counties_met_count_2}")
-        logger.info(f"并集新增县数: {counties_met_union_count - counties_met_count_1}")
+        logger.info(f"Union of counties meeting requirements for level 1 technology package and 1-2 level technology packages:")
+        logger.info(f"Union compliant counties: {counties_met_union_count}/{total_counties} ({counties_met_union_count/total_counties*100:.1f}%)")
+        logger.info(f"Step 1 compliant counties: {counties_met_count_1}")
+        logger.info(f"Step 2 compliant counties: {counties_met_count_2}")
+        logger.info(f"Union additional counties: {counties_met_union_count - counties_met_count_1}")
 
-        # 将并集结果也保存到统计中
+        # Also save union results to statistics
         stats['step_2']['counties_met_union'] = counties_met_union_count
 
-        logger.info(f"第二步应用后达标情况:")
-        logger.info(f"达标县数: {counties_met_count_2}/{total_counties} ({counties_met_count_2/total_counties*100:.1f}%)")
-        logger.info(f"新增达标县数: {counties_met_count_2 - counties_met_count_1}")
+        logger.info(f"Compliance status after step 2 application:")
+        logger.info(f"Compliant counties: {counties_met_count_2}/{total_counties} ({counties_met_count_2/total_counties*100:.1f}%)")
+        logger.info(f"New compliant counties added: {counties_met_count_2 - counties_met_count_1}")
 
-        # 第二步完成后立即保存技术包信息
+        # Save technology package information immediately after step 2
         if stats['step_2']['tech_package']:
             save_tech_package_to_excel(stats['step_2']['tech_package'], 'step_2')
-            logger.info("第二步技术包已保存完成")
+            logger.info("Step 2 technology package saved successfully")
 
-        # 第三步：为不在并集的不满足目标的县应用≤3级技术包
-        # 计算不在并集中的县（即仍未达标的县）
+        # Step 3: Apply ≤3 level technology package to counties not in union that don't meet targets
+        # Calculate counties not in union (i.e., counties that still don't meet standards)
         counties_not_in_union = np.where(~counties_met_union)[0]
         if len(counties_not_in_union) > 0:
             logger.info(f"\n" + "="*50)
-            logger.info(f"第三步：为 {len(counties_not_in_union)} 个不在并集的不满足目标的县重新应用≤3级技术包")
-            logger.info(f"并集达标县数: {counties_met_union_count}, 仍需第三步处理的县数: {len(counties_not_in_union)}")
+            logger.info(f"Step 3: Reapply ≤3 level technology package to {len(counties_not_in_union)} counties not in union that don't meet targets")
+            logger.info(f"Union compliant counties: {counties_met_union_count}, counties still needing step 3: {len(counties_not_in_union)}")
             logger.info("="*50)
 
-            # 为第三步创建新的环境实例，确保干净的状态
-            logger.info("为第三步创建新的环境实例...")
+            # Create new environment instance for step 3 to ensure clean state
+            logger.info("Creating new environment instance for step 3...")
             env_step3 = GasEnv(env_config)
             env_step3.reset()
-            logger.info("第三步环境实例创建完成")
+            logger.info("Step 3 environment instance created successfully")
 
             selected_tech_ids_3, tech_package_3 = select_optimal_techs_by_level_and_reduction(env_step3, max_level=3)
             stats['step_3']['tech_package'] = tech_package_3
@@ -928,154 +928,154 @@ def stepwise_level_based_tech_optimization(env_config, use_parallel=False, num_w
                 stats['step_3']['actions'] = actions_3
                 all_county_assignments.update(assignments_3)
 
-            # 检查第三步后的达标情况
+            # Check compliance status after step 3
             counties_met_after_step3 = check_counties_meeting_targets(env_step3)
             counties_met_count_3 = counties_met_after_step3.sum()
             stats['step_3']['counties_met'] = counties_met_count_3
 
-            # 计算三个技术包的并集（第一级、1-2级、1-3级技术包的并集）
-            # 三个技术包的并集 = 第一级达标 ∪ 1-2级达标 ∪ 1-3级达标
+            # Calculate union of three technology packages (level 1, 1-2 level, 1-3 level technology packages)
+            # Union of three technology packages = Level 1 compliant ∪ 1-2 level compliant ∪ 1-3 level compliant
             counties_met_three_tech_packages = np.logical_or(
                 np.logical_or(counties_met_after_step1, counties_met_after_step2),
                 counties_met_after_step3
             )
             counties_met_three_tech_packages_count = counties_met_three_tech_packages.sum()
 
-            logger.info(f"第三步应用后达标情况:")
-            logger.info(f"达标县数: {counties_met_three_tech_packages_count}/{total_counties} ({counties_met_three_tech_packages_count/total_counties*100:.1f}%)")
-            logger.info(f"第三步新增达标县数: {counties_met_three_tech_packages_count - counties_met_union_count}")
+            logger.info(f"Compliance status after step 3 application:")
+            logger.info(f"Compliant counties: {counties_met_three_tech_packages_count}/{total_counties} ({counties_met_three_tech_packages_count/total_counties*100:.1f}%)")
+            logger.info(f"New compliant counties added in step 3: {counties_met_three_tech_packages_count - counties_met_union_count}")
 
-            logger.info(f"\n三个技术包的并集详情:")
-            logger.info(f"第一级技术包符合要求的县数: {counties_met_count_1}")
-            logger.info(f"1-2级技术包符合要求的县数: {counties_met_union_count}")
-            logger.info(f"1-3级技术包符合要求的县数: {counties_met_three_tech_packages_count}")
-            logger.info(f"并集相对第一步新增县数: {counties_met_three_tech_packages_count - counties_met_count_1}")
-            logger.info(f"并集相对第二步新增县数: {counties_met_three_tech_packages_count - counties_met_union_count}")
+            logger.info(f"\nUnion details of three technology packages:")
+            logger.info(f"Counties meeting level 1 technology package requirements: {counties_met_count_1}")
+            logger.info(f"Counties meeting 1-2 level technology package requirements: {counties_met_union_count}")
+            logger.info(f"Counties meeting 1-3 level technology package requirements: {counties_met_three_tech_packages_count}")
+            logger.info(f"Union additional counties compared to step 1: {counties_met_three_tech_packages_count - counties_met_count_1}")
+            logger.info(f"Union additional counties compared to step 2: {counties_met_three_tech_packages_count - counties_met_union_count}")
 
-            # 将三个技术包的并集结果也保存到统计中
+            # Also save union results of three technology packages to statistics
             stats['step_3']['counties_met_three_tech_packages'] = counties_met_three_tech_packages_count
 
-            # 第三步完成后立即保存技术包信息
+            # Save technology package information immediately after step 3
             if stats['step_3']['tech_package']:
                 save_tech_package_to_excel(stats['step_3']['tech_package'], 'step_3')
-                logger.info("第三步技术包已保存完成")
+                logger.info("Step 3 technology package saved successfully")
         else:
-            logger.info(f"所有县都在第一级技术包符合要求的县与1，2技术包的县的并集中，无需进行第三步")
+            logger.info(f"All counties are in the union of counties that meet requirements for level 1 technology package and 1-2 level technology package, no need for step 3")
 
-            # 计算三个技术包的并集（此时第三步没有执行，所以并集等于第一级和1-2级的并集）
+            # Calculate the union of three technology packages (at this point step 3 was not executed, so union equals level 1 and 1-2 union)
             counties_met_three_tech_packages_count = counties_met_union_count
 
-            logger.info(f"\n第三步应用后达标情况:")
-            logger.info(f"达标县数: {counties_met_three_tech_packages_count}/{total_counties} ({counties_met_three_tech_packages_count/total_counties*100:.1f}%)")
-            logger.info(f"总计新增达标县数: {counties_met_three_tech_packages_count - counties_met_count_1}")
+            logger.info(f"\nCompliance status after step 3 application:")
+            logger.info(f"Compliant counties: {counties_met_three_tech_packages_count}/{total_counties} ({counties_met_three_tech_packages_count/total_counties*100:.1f}%)")
+            logger.info(f"Total new compliant counties added: {counties_met_three_tech_packages_count - counties_met_count_1}")
 
-            logger.info(f"\n三个技术包的并集详情:")
-            logger.info(f"第一级技术包符合要求的县数: {counties_met_count_1}")
-            logger.info(f"1-2级技术包符合要求的县数: {counties_met_union_count}")
-            logger.info(f"1-3级技术包符合要求的县数: 未执行第三步，无新增")
-            logger.info(f"三个技术包并集达标县数: {counties_met_three_tech_packages_count}/{total_counties} ({counties_met_three_tech_packages_count/total_counties*100:.1f}%)")
-            logger.info(f"并集相对第一步新增县数: {counties_met_three_tech_packages_count - counties_met_count_1}")
+            logger.info(f"\nUnion details of three technology packages:")
+            logger.info(f"Counties meeting level 1 technology package requirements: {counties_met_count_1}")
+            logger.info(f"Counties meeting 1-2 level technology package requirements: {counties_met_union_count}")
+            logger.info(f"Counties meeting 1-3 level technology package requirements: Step 3 not executed, no additional")
+            logger.info(f"Union compliant counties of three technology packages: {counties_met_three_tech_packages_count}/{total_counties} ({counties_met_three_tech_packages_count/total_counties*100:.1f}%)")
+            logger.info(f"Union additional counties compared to step 1: {counties_met_three_tech_packages_count - counties_met_count_1}")
 
-            # 将三个技术包的并集结果也保存到统计中
+            # Also save union results of three technology packages to statistics
             stats['step_3']['counties_met_three_tech_packages'] = counties_met_three_tech_packages_count
     else:
-        logger.info(f"所有县在第一步后已达标，无需进行后续步骤")
+        logger.info(f"All counties met standards after step 1, no need for subsequent steps")
 
-        # 计算三个技术包的并集（此时第二步和第三步都没有执行，所以并集等于第一级的达标情况）
+        # Calculate the union of three technology packages (at this point steps 2 and 3 were not executed, so union equals level 1 compliance)
         counties_met_three_tech_packages_count = counties_met_count_1
 
-        logger.info(f"\n第三步应用后达标情况:")
-        logger.info(f"达标县数: {counties_met_three_tech_packages_count}/{total_counties} ({counties_met_three_tech_packages_count/total_counties*100:.1f}%)")
+        logger.info(f"\nCompliance status after step 3 application:")
+        logger.info(f"Compliant counties: {counties_met_three_tech_packages_count}/{total_counties} ({counties_met_three_tech_packages_count/total_counties*100:.1f}%)")
 
-        logger.info(f"\n三个技术包的并集详情:")
-        logger.info(f"第一级技术包符合要求的县数: {counties_met_count_1}")
-        logger.info(f"1-2级技术包符合要求的县数: 未执行第二步，等于第一步")
-        logger.info(f"1-3级技术包符合要求的县数: 未执行第三步，等于第一步")
-        logger.info(f"三个技术包并集达标县数: {counties_met_three_tech_packages_count}/{total_counties} ({counties_met_three_tech_packages_count/total_counties*100:.1f}%)")
+        logger.info(f"\nUnion details of three technology packages:")
+        logger.info(f"Counties meeting level 1 technology package requirements: {counties_met_count_1}")
+        logger.info(f"Counties meeting 1-2 level technology package requirements: Step 2 not executed, equals step 1")
+        logger.info(f"Counties meeting 1-3 level technology package requirements: Step 3 not executed, equals step 1")
+        logger.info(f"Union compliant counties of three technology packages: {counties_met_three_tech_packages_count}/{total_counties} ({counties_met_three_tech_packages_count/total_counties*100:.1f}%)")
 
-        # 将三个技术包的并集结果也保存到统计中
+        # Also save union results of three technology packages to statistics
         stats['step_3']['counties_met_three_tech_packages'] = counties_met_three_tech_packages_count
 
-    # 输出总体统计
+    # Output overall statistics
     logger.info(f"\n" + "=" * 60)
-    logger.info("分步等级优化完成！总体统计:")
+    logger.info("Step-by-step level optimization completed! Overall statistics:")
     logger.info("=" * 60)
 
     total_applied_techs = stats['step_1']['applied_techs'] + stats['step_2']['applied_techs'] + stats['step_3']['applied_techs']
     total_actions = stats['step_1']['actions'] + stats['step_2']['actions'] + stats['step_3']['actions']
 
-    # 使用三个技术包的并集达标县数作为最终达标县数
+    # Use the union count of counties meeting targets from three technology packages as final compliant county count
     final_met_counties = stats['step_3']['counties_met_three_tech_packages']
 
-    logger.info(f"第一步(≤1级技术): 应用 {stats['step_1']['applied_techs']} 个技术, {stats['step_1']['actions']} 个动作")
-    logger.info(f"第二步(≤2级技术): 应用 {stats['step_2']['applied_techs']} 个技术, {stats['step_2']['actions']} 个动作")
-    logger.info(f"第三步(≤3级技术): 应用 {stats['step_3']['applied_techs']} 个技术, {stats['step_3']['actions']} 个动作")
-    logger.info(f"总计: 应用 {total_applied_techs} 个技术, {total_actions} 个动作")
-    logger.info(f"最终达标县数: {final_met_counties}/{total_counties} ({final_met_counties/total_counties*100:.1f}%)")
+    logger.info(f"Step 1 (≤Level 1 tech): Applied {stats['step_1']['applied_techs']} technologies, {stats['step_1']['actions']} actions")
+    logger.info(f"Step 2 (≤Level 2 tech): Applied {stats['step_2']['applied_techs']} technologies, {stats['step_2']['actions']} actions")
+    logger.info(f"Step 3 (≤Level 3 tech): Applied {stats['step_3']['applied_techs']} technologies, {stats['step_3']['actions']} actions")
+    logger.info(f"Total: Applied {total_applied_techs} technologies, {total_actions} actions")
+    logger.info(f"Final compliant counties: {final_met_counties}/{total_counties} ({final_met_counties/total_counties*100:.1f}%)")
 
-    # 添加县的技术包分配信息到统计结果
+    # Add county technology package allocation information to statistics results
     stats['county_assignments'] = all_county_assignments
 
     return stats
 
 def load_tech_packages_from_files(output_dir="results/level_based_stepwise_techs"):
     """
-    从Excel文件中加载技术包信息
+    Load technology package information from Excel files
 
     Args:
-        output_dir: 技术包文件所在的目录
+        output_dir: Directory where technology package files are located
 
     Returns:
-        dict: 包含技术包信息和县分配信息的字典
+        dict: Dictionary containing technology package information and county allocation information
     """
-    logger.info("从文件中加载技术包信息...")
+    logger.info("Loading technology package information from files...")
 
-    # 初始化统计结构
+    # Initialize statistics structure
     stats = {
         'step_1': {'applied_techs': 0, 'actions': 0, 'counties_met': 0, 'max_level': 1, 'tech_package': {}},
         'step_2': {'applied_techs': 0, 'actions': 0, 'counties_met': 0, 'max_level': 2, 'tech_package': {}},
         'step_3': {'applied_techs': 0, 'actions': 0, 'counties_met': 0, 'max_level': 3, 'tech_package': {}}
     }
 
-    # 加载技术包信息
+    # Load technology package information
     tech_package_files = [
         os.path.join(output_dir, "step_1_tech_package.xlsx"),
         os.path.join(output_dir, "step_2_tech_package.xlsx"),
         os.path.join(output_dir, "step_3_tech_package.xlsx")
     ]
 
-    # 加载县分配信息
+    # Load county assignment information
     county_assignment_file = os.path.join(output_dir, "level_based_stepwise_techs", "county_tech_assignments.xlsx")
     if os.path.exists(county_assignment_file):
         try:
             county_df = pd.read_excel(county_assignment_file)
-            # 构建county_assignments字典
+            # Build county_assignments dictionary
             county_assignments = {}
             for _, row in county_df.iterrows():
                 county_assignments[row['县索引']] = row['分配技术包等级']
             stats['county_assignments'] = county_assignments
-            logger.info(f"已加载县分配信息，共 {len(county_assignments)} 个县")
+            logger.info(f"County allocation information loaded, total {len(county_assignments)} counties")
         except Exception as e:
-            logger.error(f"加载县分配文件失败: {e}")
+            logger.error(f"Failed to load county allocation file: {e}")
             stats['county_assignments'] = {}
     else:
-        logger.warning(f"未找到县分配文件: {county_assignment_file}")
+        logger.warning(f"County allocation file not found: {county_assignment_file}")
         stats['county_assignments'] = {}
 
-    # 加载每个步骤的技术包
+    # Load technology packages for each step
     for i, file_path in enumerate(tech_package_files, 1):
         if os.path.exists(file_path):
             try:
                 tech_df = pd.read_excel(file_path)
 
-                # 构建技术包信息
+                # Build technology package information
                 tech_package = {
                     'max_level': i,
                     'selected_techs': tech_df['技术ID'].tolist() if '技术ID' in tech_df.columns else [],
                     'tech_details': []
                 }
 
-                # 构建技术详情，确保字段名与原始格式一致
+                # Build technology details, ensure field names match original format
                 for _, row in tech_df.iterrows():
                     tech_detail = {
                         'tech_idx': row.get('技术ID', row.get('tech_idx', 0)),
@@ -1087,7 +1087,7 @@ def load_tech_packages_from_files(output_dir="results/level_based_stepwise_techs
                         'class': row.get('产业类型', row.get('class', 'unknown')),
                         'species': row.get('物种', row.get('species', '')),
                         'conflict': row.get('冲突组', row.get('conflict', '')),
-                        # 添加气体和产量影响信息
+                        # Add gas and yield impact information
                         'NH3_reduction': row.get('NH3减排量', row.get('NH3_reduction', 0.0)),
                         'NO3_reduction': row.get('NO3减排量', row.get('NO3_reduction', 0.0)),
                         'N_runoff_reduction': row.get('N_runoff减排量', row.get('N_runoff_reduction', 0.0)),
@@ -1098,9 +1098,9 @@ def load_tech_packages_from_files(output_dir="results/level_based_stepwise_techs
                     }
                     tech_package['tech_details'].append(tech_detail)
 
-                # 计算技术数量和动作数（近似值）
+                # Calculate technology count and action count (approximate values)
                 tech_count = len(tech_package['selected_techs'])
-                # 假设每个县平均应用该技术包中的所有技术
+                # Assume each county applies all technologies in the package on average
                 county_count = len([idx for idx, level in stats['county_assignments'].items() if level == i])
                 actions_count = tech_count * county_count
 
@@ -1108,59 +1108,59 @@ def load_tech_packages_from_files(output_dir="results/level_based_stepwise_techs
                 stats[f'step_{i}']['applied_techs'] = tech_count
                 stats[f'step_{i}']['actions'] = actions_count
 
-                logger.info(f"已加载第{i}步技术包: {tech_count} 个技术, 预计 {actions_count} 个动作")
+                logger.info(f"Step {i} technology package loaded: {tech_count} technologies, expected {actions_count} actions")
 
             except Exception as e:
-                logger.error(f"加载技术包文件 {file_path} 时出错: {e}")
+                logger.error(f"Error loading technology package file {file_path}: {e}")
                 stats[f'step_{i}']['tech_package'] = {}
         else:
-            logger.warning(f"未找到技术包文件: {file_path}")
+            logger.warning(f"Technology package file not found: {file_path}")
             stats[f'step_{i}']['tech_package'] = {}
 
-    # 计算总体统计
+    # Calculate overall statistics
     total_applied_techs = sum(stats[f'step_{i}']['applied_techs'] for i in [1, 2, 3])
     total_actions = sum(stats[f'step_{i}']['actions'] for i in [1, 2, 3])
 
-    # 计算达标县数（使用分配给各级技术包的县数之和作为近似值）
+    # Calculate compliant county count (use sum of counties assigned to each level technology package as approximation)
     final_met_counties = len(stats['county_assignments'])
-    total_counties = final_met_counties  # 这里无法准确获取总县数，使用分配县数作为近似
+    total_counties = final_met_counties  # Cannot accurately get total county count here, use assigned county count as approximation
 
-    logger.info(f"技术包加载完成:")
-    logger.info(f"总计: 应用 {total_applied_techs} 个技术, {total_actions} 个动作")
-    logger.info(f"涉及县数: {final_met_counties}")
+    logger.info(f"Technology package loading completed:")
+    logger.info(f"Total: Applied {total_applied_techs} technologies, {total_actions} actions")
+    logger.info(f"Counties involved: {final_met_counties}")
 
-    # 设置最终达标县数
+    # Set final compliant county count
     stats['step_3']['counties_met_three_tech_packages'] = final_met_counties
 
     return stats
 
 def save_tech_county_impacts(env, output_dir="results", suffix="level_based_stepwise_techs", tech_impacts_data=None):
     """
-    保存每个技术对每个县的气体指标影响数据
+    Save impact data of gas indicators for each technology on each county
 
     Args:
-        env: 环境实例
-        output_dir: 输出目录
-        suffix: 文件名后缀
+        env: Environment instance
+        output_dir: Output directory
+        suffix: File name suffix
     """
-    logger.info("正在生成每个技术对各县的影响数据...")
+    logger.info("Generating impact data for each technology on each county...")
 
-    # 创建输出目录
+    # Create output directory
     full_output_dir = os.path.join(output_dir, suffix)
     os.makedirs(full_output_dir, exist_ok=True)
 
-    # 获取所有技术
+    # Get all technologies
     tech_set = env.tech_set
     county_names = env.IDs['Counties'].tolist()
 
-    # 为每个技术创建影响数据文件
+    # Create impact data files for each technology
     tech_county_impacts_dir = os.path.join(full_output_dir, "tech_county_impacts")
     os.makedirs(tech_county_impacts_dir, exist_ok=True)
 
-    # 如果提供了实际的技术影响数据，使用它；否则重新计算
+    # If actual technology impact data is provided, use it; otherwise recalculate
     if tech_impacts_data:
-        logger.info("使用实际应用技术时的影响数据...")
-        # 从技术影响数据中提取所有技术的影响
+        logger.info("Using impact data from actual technology applications...")
+        # Extract impacts of all technologies from technology impact data
         all_tech_impacts = {}
         for step_key, step_data in tech_impacts_data.items():
             if step_key.startswith('step_') and 'tech_impacts' in step_data:
@@ -1172,19 +1172,19 @@ def save_tech_county_impacts(env, output_dir="results", suffix="level_based_step
                             all_tech_impacts[tech_idx] = {}
                         all_tech_impacts[tech_idx][county_idx] = tech_data['impacts']
 
-        # 为每个技术创建影响数据文件
+        # Create impact data files for each technology
         for tech_idx, county_impacts in all_tech_impacts.items():
             try:
                 tech_row = tech_set.iloc[tech_idx]
                 tech_name = tech_row['Mitigation strategy']
 
-                # 准备数据用于保存 - 只处理需要技术的县
+                # Prepare data for saving - only process counties that need technology
                 impact_data = []
 
-                # 获取需要技术的县索引
+                # Get indices of counties that need technology
                 counties_need_tech_indices = np.where(env.counties_need_tech)[0]
 
-                # 只遍历需要技术的县
+                # Only iterate through counties that need technology
                 for county_idx in counties_need_tech_indices:
                     if county_idx in county_impacts:
                         impact_data.append({
@@ -1200,7 +1200,7 @@ def save_tech_county_impacts(env, output_dir="results", suffix="level_based_step
                             '净减排量': county_impacts[county_idx]['net_reduction']
                         })
                     else:
-                        # 对于需要技术但未应用该技术的县，显示0值
+                        # For counties that need technology but did not apply this technology, show 0 values
                         impact_data.append({
                             '县名称': county_names[county_idx],
                             '县索引': county_idx,
@@ -1214,7 +1214,7 @@ def save_tech_county_impacts(env, output_dir="results", suffix="level_based_step
                             '净减排量': 0.0
                         })
 
-                # 保存到Excel文件
+                # Save to Excel file
                 safe_tech_name = "".join(c for c in tech_name if c.isalnum() or c in (' ', '-', '_')).rstrip()
                 safe_tech_name = safe_tech_name.replace(' ', '_').replace('-', '_')
 
@@ -1223,25 +1223,25 @@ def save_tech_county_impacts(env, output_dir="results", suffix="level_based_step
                 impact_df.to_excel(impact_file, index=False)
 
             except Exception as e:
-                logger.error(f"处理技术 {tech_idx} 时出错: {e}")
+                logger.error(f"Error processing technology {tech_idx}: {e}")
                 continue
     else:
-        # 如果没有提供技术影响数据，记录警告但不进行计算
-        logger.warning("未提供技术影响数据，跳过单个技术影响文件的生成")
+        # If technology impact data is not provided, log warning but do not perform calculation
+        logger.warning("Technical impact data not provided, skipping individual technology impact file generation")
 
-    logger.info(f"技术对各县的影响数据已保存到目录: {tech_county_impacts_dir}")
+    logger.info(f"Technology impact data on counties saved to directory: {tech_county_impacts_dir}")
 
-    # 创建汇总文件，显示每个县应用了哪些技术及其影响
+    # Create summary file showing which technologies each county applied and their impacts
     try:
-        logger.info("正在生成县技术影响汇总...")
+        logger.info("Generating county technology impact summary...")
 
-        # 如果提供了实际的技术影响数据，使用它；否则从环境状态计算
+        # If actual technology impact data is provided, use it; otherwise calculate from environment state
         if tech_impacts_data:
-            # 使用实际的技术影响数据
+            # Use actual technology impact data
             applied_techs = {}
             county_summary_data = []
 
-            # 从技术影响数据中提取县的技术应用信息
+            # Extract county technology application information from technology impact data
             for step_key, step_data in tech_impacts_data.items():
                 if 'tech_impacts' in step_data:
                     step_impacts = step_data['tech_impacts']
@@ -1249,21 +1249,21 @@ def save_tech_county_impacts(env, output_dir="results", suffix="level_based_step
                         if county_idx not in applied_techs:
                             applied_techs[county_idx] = []
 
-                        # 记录该县应用的技术
+                        # Record technologies applied to this county
                         for tech_data in county_data['applied_techs']:
                             tech_idx = tech_data['tech_idx']
                             if tech_idx not in applied_techs[county_idx]:
                                 applied_techs[county_idx].append(tech_idx)
 
-            # 为每个县创建汇总数据 - 只处理需要技术的县
-            # 获取需要技术的县索引
+            # Create summary data for each county - only process counties that need technology
+            # Get indices of counties that need technology
             counties_need_tech_indices = np.where(env.counties_need_tech)[0]
 
             for county_idx in counties_need_tech_indices:
                 county_name = county_names[county_idx]
                 applied_tech_list = applied_techs.get(county_idx, [])
 
-                # 计算该县所有应用技术的影响总和
+                # Calculate the total impact of all technologies applied to this county
                 total_impacts = {
                     'NH3变化': 0.0,
                     'NO3变化': 0.0,
@@ -1301,8 +1301,8 @@ def save_tech_county_impacts(env, output_dir="results", suffix="level_based_step
                                     '净减排量': impact['net_reduction']
                                 })
 
-                                # 累加到县的总影响
-                                # 创建键名映射
+                                # Accumulate to county's total impacts
+                                # Create key name mapping
                                 key_mapping = {
                                     'NH3变化': 'NH3_change',
                                     'NO3变化': 'NO3_change',
@@ -1333,20 +1333,20 @@ def save_tech_county_impacts(env, output_dir="results", suffix="level_based_step
                     '总净减排量': total_impacts['净减排量']
                 })
         else:
-            # 如果没有提供技术影响数据，创建空的汇总数据
-            logger.warning("未提供技术影响数据，无法生成县汇总")
+            # If technology impact data is not provided, create empty summary data
+            logger.warning("Technical impact data not provided, unable to generate county summary")
             county_summary_data = []
 
-        # 保存县汇总数据
+        # Save county summary data
         county_summary_df = pd.DataFrame(county_summary_data)
         county_summary_file = os.path.join(full_output_dir, "county_tech_impacts_summary.xlsx")
         county_summary_df.to_excel(county_summary_file, index=False)
-        logger.info(f"县技术影响汇总已保存到: {county_summary_file}")
+        logger.info(f"County technology impact summary saved to: {county_summary_file}")
 
-        # 保存详细的技术应用数据（每个县每种技术的影响）
+        # Save detailed technology application data (impact of each technology on each county)
         detailed_data = []
         if tech_impacts_data:
-            # 使用实际的技术影响数据
+            # Use actual technology impact data
             for step_key, step_data in tech_impacts_data.items():
                 if 'tech_impacts' in step_data:
                     step_impacts = step_data['tech_impacts']
@@ -1375,55 +1375,55 @@ def save_tech_county_impacts(env, output_dir="results", suffix="level_based_step
                                 '净减排量': impact['net_reduction']
                             })
         else:
-            # 如果没有提供技术影响数据，跳过详细数据生成
-            logger.warning("未提供技术影响数据，跳过详细数据生成")
+            # If technology impact data is not provided, skip detailed data generation
+            logger.warning("Technical impact data not provided, skipping detailed data generation")
 
         if detailed_data:
             detailed_df = pd.DataFrame(detailed_data)
             detailed_file = os.path.join(full_output_dir, "county_tech_impacts_detailed.xlsx")
             detailed_df.to_excel(detailed_file, index=False)
-            logger.info(f"县技术影响详细信息已保存到: {detailed_file}")
+            logger.info(f"County technology impact details saved to: {detailed_file}")
 
     except Exception as e:
-        logger.error(f"生成县技术影响汇总时出错: {e}")
+        logger.error(f"Error generating county technology impact summary: {e}")
 
 def output_state_summary(env, output_dir="results", suffix="level_based_stepwise_techs", optimization_stats=None, skip_tech_save=False):
     """
-    输出环境状态汇总，包含技术包信息和县的技术包分配
+    Output environment state summary, including technology package information and county technology package allocation
 
     Args:
-        env: 环境实例
-        output_dir: 输出目录
-        suffix: 文件名后缀
-        optimization_stats: 优化统计信息，包含技术包和县分配信息
+        env: Environment instance
+        output_dir: Output directory
+        suffix: File name suffix
+        optimization_stats: Optimization statistics information, including technology package and county allocation information
     """
-    logger.info(f"\n=== 输出分步等级优化后的状态 ===")
+    logger.info(f"\n=== Output state after step-by-step level optimization ===")
 
-    # 创建输出目录
+    # Create output directory
     full_output_dir = os.path.join(output_dir, suffix)
     os.makedirs(full_output_dir, exist_ok=True)
 
-    # 输出和保存技术包信息
+    # Output and save technology package information
     if optimization_stats:
-        logger.info(f"\n=== 技术包信息 ===")
+        logger.info(f"\n=== Technology Package Information ===")
 
-        # 准备技术包数据用于保存
+        # Prepare technology package data for saving
         tech_package_data = []
 
         for step_key, step_data in optimization_stats.items():
             if step_key.startswith('step_') and 'tech_package' in step_data:
                 tech_package = step_data['tech_package']
                 if tech_package and 'tech_details' in tech_package:
-                    logger.info(f"\n{step_key.upper()} 技术包 (≤{tech_package.get('max_level', '?')}级):")
-                    logger.info(f"  技术数量: {len(tech_package['tech_details'])}")
-                    logger.info(f"  分级分布: {tech_package.get('level_counts', {})}")
+                    logger.info(f"\n{step_key.upper()} Technology Package (≤{tech_package.get('max_level', '?')} level):")
+                    logger.info(f"  Technology count: {len(tech_package['tech_details'])}")
+                    logger.info(f"  Level distribution: {tech_package.get('level_counts', {})}")
 
                     for tech_detail in tech_package['tech_details']:
-                        logger.info(f"    - {tech_detail['name']} (等级:{tech_detail['level']}, {tech_detail['reduction_type']}:{abs(tech_detail['net_reduction']):.4f}, 成本:{tech_detail['cost']:.2f})")
-                        logger.info(f"      气体影响 - NH3:{tech_detail.get('NH3_reduction', 0):.4f}, NO3:{tech_detail.get('NO3_reduction', 0):.4f}, N_runoff:{tech_detail.get('N_runoff_reduction', 0):.4f}")
-                        logger.info(f"      气体影响 - CH4:{tech_detail.get('CH4_reduction', 0):.4f}, N2O:{tech_detail.get('N2O_reduction', 0):.4f}, SOC:{tech_detail.get('SOC_reduction', 0):.4f}, 产量:{tech_detail.get('yield_change', 0):.4f}")
+                        logger.info(f"    - {tech_detail['name']} (Level:{tech_detail['level']}, {tech_detail['reduction_type']}:{abs(tech_detail['net_reduction']):.4f}, Cost:{tech_detail['cost']:.2f})")
+                        logger.info(f"      Gas impacts - NH3:{tech_detail.get('NH3_reduction', 0):.4f}, NO3:{tech_detail.get('NO3_reduction', 0):.4f}, N_runoff:{tech_detail.get('N_runoff_reduction', 0):.4f}")
+                        logger.info(f"      Gas impacts - CH4:{tech_detail.get('CH4_reduction', 0):.4f}, N2O:{tech_detail.get('N2O_reduction', 0):.4f}, SOC:{tech_detail.get('SOC_reduction', 0):.4f}, Yield:{tech_detail.get('yield_change', 0):.4f}")
 
-                        # 添加到技术包数据列表
+                        # Add to technology package data list
                         tech_package_data.append({
                             '步骤': step_key.upper(),
                             '最大等级': tech_package.get('max_level', 0),
@@ -1438,18 +1438,18 @@ def output_state_summary(env, output_dir="results", suffix="level_based_stepwise
                             '冲突组': '' if pd.isna(tech_detail['conflict']) else tech_detail['conflict']
                         })
 
-        # 保存技术包信息到Excel
+            # Save technology package information to Excel
         if not skip_tech_save and tech_package_data:
             tech_package_df = pd.DataFrame(tech_package_data)
             tech_package_file = os.path.join(full_output_dir, "tech_packages.xlsx")
             tech_package_df.to_excel(tech_package_file, index=False)
-            logger.info(f"技术包信息已保存到: {tech_package_file}")
+            logger.info(f"Technology package information saved to: {tech_package_file}")
         elif skip_tech_save:
-            logger.info("跳过技术包信息保存（文件已存在）")
+            logger.info("Skip technology package information saving (file already exists)")
 
-        # 输出县的技术包分配信息
+        # Output county technology package allocation information
         if 'county_assignments' in optimization_stats:
-            logger.info(f"\n=== 县的技术包分配 ===")
+            logger.info(f"\n=== County Technology Package Allocation ===")
             county_names = env.IDs['Counties'].tolist()
             assignments = optimization_stats['county_assignments']
 
@@ -1470,12 +1470,12 @@ def output_state_summary(env, output_dir="results", suffix="level_based_stepwise
                 else:
                     no_tech_counties.append(county_names[county_idx])
 
-            logger.info(f"使用1级技术包的县 ({len(level_1_counties)}个): {', '.join(level_1_counties[:10])}{'...' if len(level_1_counties) > 10 else ''}")
-            logger.info(f"使用2级技术包的县 ({len(level_2_counties)}个): {', '.join(level_2_counties[:10])}{'...' if len(level_2_counties) > 10 else ''}")
-            logger.info(f"使用3级技术包的县 ({len(level_3_counties)}个): {', '.join(level_3_counties[:10])}{'...' if len(level_3_counties) > 10 else ''}")
-            logger.info(f"无需技术干预的县 ({len(no_tech_counties)}个): {', '.join(no_tech_counties[:10])}{'...' if len(no_tech_counties) > 10 else ''}")
+            logger.info(f"Counties using level 1 technology package ({len(level_1_counties)}): {', '.join(level_1_counties[:10])}{'...' if len(level_1_counties) > 10 else ''}")
+            logger.info(f"Counties using level 2 technology package ({len(level_2_counties)}): {', '.join(level_2_counties[:10])}{'...' if len(level_2_counties) > 10 else ''}")
+            logger.info(f"Counties using level 3 technology package ({len(level_3_counties)}): {', '.join(level_3_counties[:10])}{'...' if len(level_3_counties) > 10 else ''}")
+            logger.info(f"Counties requiring no technology intervention ({len(no_tech_counties)}): {', '.join(no_tech_counties[:10])}{'...' if len(no_tech_counties) > 10 else ''}")
 
-            # 保存县的技术包分配信息到Excel
+            # Save county technology package allocation information to Excel
             county_assignment_data = []
             for county_idx in range(len(county_names)):
                 county_name = county_names[county_idx]
@@ -1499,18 +1499,18 @@ def output_state_summary(env, output_dir="results", suffix="level_based_stepwise
                 county_assignment_df = pd.DataFrame(county_assignment_data)
                 county_assignment_file = os.path.join(full_output_dir, "county_tech_assignments.xlsx")
                 county_assignment_df.to_excel(county_assignment_file, index=False)
-                logger.info(f"县的技术包分配信息已保存到: {county_assignment_file}")
+                logger.info(f"County technology package allocation information saved to: {county_assignment_file}")
             else:
-                logger.info("跳过县的技术包分配信息保存（文件已存在）")
+                logger.info("Skip county technology package allocation information saving (file already exists)")
     
-    # 获取县名列表
+    # Get county name list
     county_names = env.IDs['Counties'].tolist()
     
-    # 1. 保存观察状态数据（env.state）
+    # 1. Save observation state data (env.state)
     state_data = {}
     for key, value in env.state.items():
         if key == 'Tech_selected':
-            # 计算每个县选择的技术数量
+            # Calculate the number of technologies selected by each county
             tech_counts = value[:, :env.numTech].sum(axis=1).cpu().numpy()
             state_data['选择技术数量'] = tech_counts
         elif isinstance(value, torch.Tensor):
@@ -1519,19 +1519,19 @@ def output_state_summary(env, output_dir="results", suffix="level_based_stepwise
             elif value.dim() == 1:
                 state_data[key] = value.cpu().numpy()
     
-    # 创建观察状态DataFrame
+    # Create observation state DataFrame
     state_df = pd.DataFrame(state_data, index=county_names)
     state_file = os.path.join(full_output_dir, "state_after_single_step_techs.xlsx")
     state_df.to_excel(state_file)
-    logger.info(f"观察状态数据已保存到: {state_file}")
+    logger.info(f"Observation state data saved to: {state_file}")
 
-    # 2. 保存stateMapping的所有状态数据（按key分别保存）
+    # 2. Save all state data from stateMapping (save by key separately)
     if hasattr(env, 'stateMapping') and env.stateMapping:
-        logger.info(f"正在保存 {len(env.stateMapping)} 个状态映射...")
+        logger.info(f"Saving {len(env.stateMapping)} state mappings...")
         for key, value in env.stateMapping.items():
             try:
                 if isinstance(value, torch.Tensor):
-                    # 获取对应的列名
+                    # Get corresponding column names
                     if key in env.class_mapping:
                         columns = env.class_mapping[key]
                         if hasattr(columns, 'tolist'):
@@ -1541,10 +1541,10 @@ def output_state_summary(env, output_dir="results", suffix="level_based_stepwise
                         else:
                             columns = [str(columns)]
                     else:
-                        # 如果没有映射，使用默认列名
+                        # If no mapping, use default column names
                         columns = [f"Col_{i}" for i in range(value.shape[1])] if value.dim() > 1 else ["Value"]
 
-                    # 创建DataFrame
+                    # Create DataFrame
                     if value.dim() == 1:
                         value_2d = value.unsqueeze(1)
                         columns = ["Value"]
@@ -1557,7 +1557,7 @@ def output_state_summary(env, output_dir="results", suffix="level_based_stepwise
                         columns=columns
                     )
                 else:
-                    # 处理非tensor数据
+                    # Handle non-tensor data
                     if key in env.class_mapping:
                         columns = env.class_mapping[key]
                         if hasattr(columns, 'tolist'):
@@ -1571,16 +1571,16 @@ def output_state_summary(env, output_dir="results", suffix="level_based_stepwise
 
                     state_mapping_df = pd.DataFrame(value, index=county_names, columns=columns)
 
-                # 保存文件
+                # Save file
                 state_mapping_file = os.path.join(full_output_dir, f"{key}.xlsx")
                 state_mapping_df.to_excel(state_mapping_file)
-                logger.info(f"状态映射 '{key}' 已保存到: {state_mapping_file}")
+                logger.info(f"State mapping '{key}' saved to: {state_mapping_file}")
 
             except Exception as e:
-                logger.error(f"保存状态映射 '{key}' 时出错: {e}")
+                logger.error(f"Save state mapping '{key}' failed: {e}")
                 continue
     
-    # 3. 减排差距数据
+    # 3. Emission reduction gap data
     gap_data = {
         'gap_NO3': env.gap_NO3.squeeze().cpu().numpy(),
         'gap_N_runoff': env.gap_N_runoff.squeeze().cpu().numpy(),
@@ -1592,23 +1592,23 @@ def output_state_summary(env, output_dir="results", suffix="level_based_stepwise
     gap_df = pd.DataFrame(gap_data, index=county_names)
     gap_file = os.path.join(full_output_dir, "gaps_after_single_step_techs.xlsx")
     gap_df.to_excel(gap_file)
-    logger.info(f"减排差距数据已保存到: {gap_file}")
+    logger.info(f"Emission reduction gap data saved to: {gap_file}")
 
-    # 4. 统计摘要
-    logger.info("\n=== 各指标统计摘要 ===")
-    logger.info("观察状态指标统计:")
+    # 4. Statistical summary
+    logger.info("\n=== Statistical summary of each indicator ===")
+    logger.info("Observation state indicator statistics:")
     logger.info(f"\n{state_df.describe()}")
 
-    logger.info("\n减排差距统计:")
+    logger.info("\nEmission reduction gap statistics:")
     logger.info(f"\n{gap_df.describe()}")
 
-    # 如果保存了stateMapping，输出状态映射文件列表
+    # If stateMapping is saved, output list of state mapping files
     if hasattr(env, 'stateMapping') and env.stateMapping:
-        logger.info(f"\n已保存的状态映射文件:")
+        logger.info(f"\nSaved state mapping files:")
         for key in env.stateMapping.keys():
             logger.info(f"  - {key}.xlsx")
     
-    # 5. 达标情况统计
+    # 5. Compliance status statistics
     no3_met = (env.gap_NO3.squeeze() <= 0).sum().item()
     nh3_met = (env.gap_NH3.squeeze() <= 0).sum().item()
     n_runoff_met = (env.gap_N_runoff.squeeze() <= 0).sum().item()
@@ -1617,14 +1617,14 @@ def output_state_summary(env, output_dir="results", suffix="level_based_stepwise
     
     total_counties = len(county_names)
     
-    logger.info(f"\n=== 达标情况统计 (总县数: {total_counties}) ===")
-    logger.info(f"NO3达标: {no3_met} 县 ({no3_met/total_counties*100:.1f}%)")
-    logger.info(f"NH3达标: {nh3_met} 县 ({nh3_met/total_counties*100:.1f}%)")
-    logger.info(f"N_runoff达标: {n_runoff_met} 县 ({n_runoff_met/total_counties*100:.1f}%)")
-    logger.info(f"CH4达标: {ch4_met} 县 ({ch4_met/total_counties*100:.1f}%)")
-    logger.info(f"N2O达标: {n2o_met} 县 ({n2o_met/total_counties*100:.1f}%)")
+    logger.info(f"\n=== Compliance status statistics (Total counties: {total_counties}) ===")
+    logger.info(f"NO3 met: {no3_met} counties ({no3_met/total_counties*100:.1f}%)")
+    logger.info(f"NH3 met: {nh3_met} counties ({nh3_met/total_counties*100:.1f}%)")
+    logger.info(f"N_runoff met: {n_runoff_met} counties ({n_runoff_met/total_counties*100:.1f}%)")
+    logger.info(f"CH4 met: {ch4_met} counties ({ch4_met/total_counties*100:.1f}%)")
+    logger.info(f"N2O met: {n2o_met} counties ({n2o_met/total_counties*100:.1f}%)")
     
-    # 所有指标都达标的县数量
+    # Number of counties meeting all indicators
     all_targets_met = (
         (env.gap_NO3.squeeze() <= 0) & 
         (env.gap_NH3.squeeze() <= 0) & 
@@ -1633,9 +1633,9 @@ def output_state_summary(env, output_dir="results", suffix="level_based_stepwise
         # (env.gap_N2O.squeeze() <= 0)
     ).sum().item()
     
-    logger.info(f"所有指标都达标: {all_targets_met} 县 ({all_targets_met/total_counties*100:.1f}%)")
+    logger.info(f"All indicators met: {all_targets_met} counties ({all_targets_met/total_counties*100:.1f}%)")
 
-    # 6. 保存统计摘要
+    # 6. Save statistical summary
     summary_data = {
         '指标': ['总县数', 'NO3达标县数', 'NH3达标县数', 'N_runoff达标县数', 'CH4达标县数', 'N2O达标县数', '全部达标县数'],
         '数量': [total_counties, no3_met, nh3_met, n_runoff_met, ch4_met, n2o_met, all_targets_met],
@@ -1645,25 +1645,25 @@ def output_state_summary(env, output_dir="results", suffix="level_based_stepwise
     }
 
     summary_df = pd.DataFrame(summary_data)
-    summary_file = os.path.join(full_output_dir, "达标统计摘要.xlsx")
+    summary_file = os.path.join(full_output_dir, "compliance_statistics_summary.xlsx")
     summary_df.to_excel(summary_file, index=False)
-    logger.info(f"达标统计摘要已保存到: {summary_file}")
+    logger.info(f"Compliance statistics summary saved to: {summary_file}")
 
-    # 7. 保存成本数据
+    # 7. Save cost data
     if hasattr(env, 'save_path') and env.save_path is not None:
-        # 确保保存路径存在
+        # Ensure save path exists
         if not os.path.exists(env.save_path):
             os.makedirs(env.save_path, exist_ok=True)
         cost_df = env._save_tech_selected_summary()
-        # 将成本数据也保存到output_dir
+        # Also save cost data to output_dir
         cost_df.to_excel(os.path.join(full_output_dir, "cost.xlsx"))
-        logger.info(f"成本数据已保存到: {os.path.join(full_output_dir, 'cost.xlsx')}")
+        logger.info(f"Cost data saved to: {os.path.join(full_output_dir, 'cost.xlsx')}")
     else:
-        logger.warning("环境未设置save_path，跳过成本数据保存")
+        logger.warning("Environment save_path not set, skipping cost data saving")
 
-    # 保存每个技术对每个县的影响数据
+    # Save impact data of each technology on each county
     try:
-        # 如果有技术影响数据，传递给保存函数
+        # If there is technology impact data, pass it to save function
         tech_impacts_data = None
         if optimization_stats:
             tech_impacts_data = {}
@@ -1673,57 +1673,57 @@ def output_state_summary(env, output_dir="results", suffix="level_based_stepwise
 
         save_tech_county_impacts(env, output_dir, suffix, tech_impacts_data)
     except Exception as e:
-        logger.error(f"保存技术对各县的影响数据时出错: {e}")
+        logger.error(f"Error saving technology impacts on each county: {e}")
 
     return state_df, gap_df, summary_df, cost_df if 'cost_df' in locals() else None
 
 def create_tech_impact_summary(output_dir="results/level_based_stepwise_techs"):
     """
-    创建技术对气体影响的汇总表
-    将所有技术对各县的影响累加汇总
+    Create summary table of technology gas impact
+    Accumulate and summarize impacts of all technologies on all counties
     """
     import pandas as pd
     import os
     import glob
     from pathlib import Path
 
-    logger.info("开始创建技术影响汇总表...")
+    logger.info("Creating technology impact summary table...")
 
-    # 构建tech_county_impacts目录路径
+    # Build tech_county_impacts directory path
     tech_impacts_dir = os.path.join(output_dir, "level_based_stepwise_techs", "tech_county_impacts")
 
     if not os.path.exists(tech_impacts_dir):
-        logger.error(f"技术影响目录不存在: {tech_impacts_dir}")
+        logger.error(f"Technology impact directory does not exist: {tech_impacts_dir}")
         return
 
-    # 获取所有技术文件
+    # Get all technology files
     tech_files = glob.glob(os.path.join(tech_impacts_dir, "tech_*.xlsx"))
-    logger.info(f"找到 {len(tech_files)} 个技术文件")
+    logger.info(f"Found {len(tech_files)} technology files")
 
     if not tech_files:
-        logger.error("没有找到技术影响文件")
+        logger.error("No technology impact files found")
         return
 
-    # 初始化汇总数据
+    # Initialize summary data
     tech_summary = {}
 
-    # 处理每个技术文件
+    # Process each technology file
     for i, file_path in enumerate(tech_files):
         try:
-            # 从文件名提取技术ID和名称
+            # Extract technology ID and name from filename
             filename = os.path.basename(file_path)
             parts = filename.replace('.xlsx', '').split('_', 2)
             if len(parts) >= 3:
                 tech_id = int(parts[1])
                 tech_name = parts[2]
             else:
-                logger.warning(f"无法解析文件名: {filename}")
+                logger.warning(f"Cannot parse filename: {filename}")
                 continue
 
-            # 读取技术影响数据
+            # Read technology impact data
             df = pd.read_excel(file_path)
 
-            # 计算该技术对所有县的影响总和
+            # Calculate the total impact of this technology on all counties
             total_impacts = {
                 'NH3变化': df['NH3变化'].sum(),
                 'NO3变化': df['NO3变化'].sum(),
@@ -1743,13 +1743,13 @@ def create_tech_impact_summary(output_dir="results/level_based_stepwise_techs"):
             }
 
         except Exception as e:
-            logger.error(f"处理文件 {file_path} 时出错: {e}")
+            logger.error(f"Error processing file {file_path}: {e}")
             continue
 
         if (i + 1) % 50 == 0:
-            logger.info(f"已处理 {i + 1}/{len(tech_files)} 个技术文件")
+            logger.info(f"Processed {i + 1}/{len(tech_files)} technology files")
 
-    # 创建汇总DataFrame
+    # Create summary DataFrame
     summary_data = []
     for tech_id, data in tech_summary.items():
         summary_data.append(data)
@@ -1757,48 +1757,48 @@ def create_tech_impact_summary(output_dir="results/level_based_stepwise_techs"):
     if summary_data:
         summary_df = pd.DataFrame(summary_data)
 
-        # 按净减排量排序（绝对值最大的排在前面）
+        # Sort by net emission reduction (largest absolute values first)
         summary_df['净减排量绝对值'] = summary_df['净减排量'].abs()
         summary_df = summary_df.sort_values('净减排量绝对值', ascending=False)
         summary_df = summary_df.drop('净减排量绝对值', axis=1)
 
-        # 保存汇总表
+        # Save summary table
         output_file = os.path.join(output_dir, "level_based_stepwise_techs", "tech_gas_impact_summary.xlsx")
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
         summary_df.to_excel(output_file, index=False)
 
-        logger.info(f"技术影响汇总表已保存到: {output_file}")
-        logger.info(f"汇总了 {len(summary_data)} 个技术的影响数据")
+        logger.info(f"Technology impact summary table saved to: {output_file}")
+        logger.info(f"Summarized {len(summary_data)} technology impact data")
 
-        # 输出统计信息
-        logger.info("汇总统计:")
-        logger.info(f"- 技术总数: {len(summary_data)}")
-        logger.info(f"- 有影响的技术数: {len(summary_df[summary_df['净减排量'] != 0])}")
-        logger.info(f"- 平均影响县数: {summary_df['影响县数'].mean():.1f}")
-        logger.info(f"- 最大净减排量: {summary_df['净减排量'].max():.4f}")
-        logger.info(f"- 最小净减排量: {summary_df['净减排量'].min():.4f}")
+        # Output statistics information
+        logger.info("Summary statistics:")
+        logger.info(f"- Technology total: {len(summary_data)}")
+        logger.info(f"- Technology with impact: {len(summary_df[summary_df['净减排量'] != 0])}")
+        logger.info(f"- Average impact county number: {summary_df['影响县数'].mean():.1f}")
+        logger.info(f"- Maximum net emission reduction: {summary_df['净减排量'].max():.4f}")
+        logger.info(f"- Minimum net emission reduction: {summary_df['净减排量'].min():.4f}")
 
     else:
-        logger.error("没有有效的技术影响数据")
+        logger.error("No valid technology impact data")
 
 def main():
     """
-    主函数
+    Main function
     """
-    # 配置日志文件输出
+    # Configure log file output
     log_file = "results/level_based_stepwise_techs/optimization.log"
     os.makedirs(os.path.dirname(log_file), exist_ok=True)
 
-    # 添加文件处理器到全局logger
+    # Add file handler to global logger
     file_handler = logging.FileHandler(log_file, encoding='utf-8')
     file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
     logger.addHandler(file_handler)
 
     logger.info("=" * 60)
-    logger.info("分步等级技术优化：按技术等级分步(1级→1+2级→1+2+3级)，每等级内按等级、经济成本、减排量排序")
+    logger.info("Step-by-step level technology optimization: Step by technology level (Level 1→1+2→1+2+3), sort within each level by level, economic cost, emission reduction")
     logger.info("=" * 60)
 
-    # 检查是否已经保存过三个技术包，如果是则跳过执行
+    # Check if three technology packages have been saved, if so skip execution
     output_dir = "results/level_based_stepwise_techs"
     tech_package_files = [
         os.path.join(output_dir, "step_1_tech_package.xlsx"),
@@ -1812,26 +1812,26 @@ def main():
             return False
         try:
             df = pd.read_excel(file_path)
-            return len(df) > 0  # 确保文件包含数据
+            return len(df) > 0  # Ensure file contains data
         except Exception as e:
-            logger.warning(f"读取技术包文件 {file_path} 时出错: {e}")
+            logger.warning(f"Error reading technology package file {file_path}: {e}")
             return False
 
     all_files_valid = all(check_tech_package_file_valid(file) for file in tech_package_files)
 
     skip_tech_selection = False
     if all_files_valid:
-        logger.info("检测到已经存在三个有效的技术包文件，将跳过技术包选取过程")
-        logger.info("现有技术包文件：")
+        logger.info("Detected three valid technology package files, skipping technology package selection process")
+        logger.info("Existing technology package files:")
         for file in tech_package_files:
             df = pd.read_excel(file)
-            logger.info(f"  - {file} (包含 {len(df)} 个技术)")
-        logger.info("将基于现有技术包进行后续处理")
+            logger.info(f"  - {file} (contains {len(df)} technologies)")
+        logger.info("Proceeding with existing technology packages")
         logger.info("=" * 60)
         skip_tech_selection = True
 
     try:
-        # 创建环境配置 - 使用松嫩－三江平原农业区作为示例
+        # Create environment configuration - using Songnen-Sanjiang Plain agricultural area as example
         config = GasEnvConfig(
             Reward_priority=[0.7, 0.5, 0.3, 0.2],
             county_df_path='data/基础数据-县级尺度.xlsx',
@@ -1842,46 +1842,46 @@ def main():
             livestock_scale="data/动物数量.xlsx",
             crop_scale="data/分县种植面积.xlsx",
             linear_result_path='results/linear_optimization_results_by_county_5gases_hard_target.xlsx',
-            only_lp_phase=True,  # 启用线性规划约束模式
-            save_path="temp_yield_output"  # 临时路径，用于启用产量追踪
+            only_lp_phase=True,  # Enable linear programming constraint mode
+            save_path="temp_yield_output"  # Temporary path for enabling yield tracking
         )
-        logger.info("环境配置创建成功")
+        logger.info("Environment configuration created successfully")
 
-        # 创建环境
+        # Create environment
         env = GasEnv(config)
-        # 保存配置以便后续创建新的环境实例
+        # Save configuration for creating new environment instances later
         env_config = config
-        logger.info(f"环境创建成功，包含 {env.numCounty} 个县，{env.numTech} 种技术")
+        logger.info(f"Environment created successfully, containing {env.numCounty} counties, {env.numTech} technologies")
 
-        # 重置环境
+        # Reset environment
         env.reset()
-        logger.info("环境已重置到初始状态")
+        logger.info("Environment reset to initial state")
 
-        # 输出初始状态信息
-        logger.info(f"需要技术添加的县数量: {env.counties_need_tech.sum()}")
+        # Output initial state information
+        logger.info(f"Number of counties needing technology addition: {env.counties_need_tech.sum()}")
         
-        # 执行分步等级技术优化（按技术等级分步 + 等级、经济成本、减排量排序）
+        # Execute step-by-step level technology optimization (step by level + sort by level, economic cost, emission reduction)
         if skip_tech_selection:
-            logger.info("跳过技术包选取，从文件中加载技术包信息...")
+            logger.info("Skipping technology package selection, loading technology package information from files...")
             optimization_stats = load_tech_packages_from_files("results/level_based_stepwise_techs")
         else:
             optimization_stats = stepwise_level_based_tech_optimization(env_config, use_parallel=False)
 
-        # 在原始环境中重新应用所有选择的技术，确保最终状态正确
-        logger.info("在原始环境中重新应用所有选择的技术...")
+        # Reapply all selected technologies in the original environment to ensure final state is correct
+        logger.info("Reapplying all selected technologies in the original environment...")
 
-        # 根据county_assignments确定每个步骤应该应用到哪些县
+        # Determine which counties each step should apply to based on county_assignments
         if 'county_assignments' in optimization_stats and optimization_stats['county_assignments']:
             counties_step1 = [idx for idx, level in optimization_stats['county_assignments'].items() if level == 1]
             counties_step2 = [idx for idx, level in optimization_stats['county_assignments'].items() if level == 2]
             counties_step3 = [idx for idx, level in optimization_stats['county_assignments'].items() if level == 3]
 
-            logger.info(f"第一步技术将应用到 {len(counties_step1)} 个县")
-            logger.info(f"第二步技术将应用到 {len(counties_step2)} 个县")
-            logger.info(f"第三步技术将应用到 {len(counties_step3)} 个县")
+            logger.info(f"Step 1 technologies will be applied to {len(counties_step1)} counties")
+            logger.info(f"Step 2 technologies will be applied to {len(counties_step2)} counties")
+            logger.info(f"Step 3 technologies will be applied to {len(counties_step3)} counties")
         else:
-            logger.warning("未找到有效的县技术包分配信息，将重新运行优化过程来生成分配信息")
-            logger.info("开始重新运行分步等级优化...")
+            logger.warning("Valid county technology package allocation information not found, will rerun optimization process to generate allocation information")
+            logger.info("Starting to rerun step-by-step level optimization...")
             optimization_stats = stepwise_level_based_tech_optimization(env_config, use_parallel=False)
 
             if 'county_assignments' in optimization_stats and optimization_stats['county_assignments']:
@@ -1889,47 +1889,47 @@ def main():
                 counties_step2 = [idx for idx, level in optimization_stats['county_assignments'].items() if level == 2]
                 counties_step3 = [idx for idx, level in optimization_stats['county_assignments'].items() if level == 3]
 
-                logger.info(f"重新计算后，第一步技术将应用到 {len(counties_step1)} 个县")
-                logger.info(f"重新计算后，第二步技术将应用到 {len(counties_step2)} 个县")
-                logger.info(f"重新计算后，第三步技术将应用到 {len(counties_step3)} 个县")
+                logger.info(f"After recalculation, step 1 technologies will be applied to {len(counties_step1)} counties")
+                logger.info(f"After recalculation, step 2 technologies will be applied to {len(counties_step2)} counties")
+                logger.info(f"After recalculation, step 3 technologies will be applied to {len(counties_step3)} counties")
             else:
-                logger.error("重新运行优化过程后仍未找到县技术包分配信息")
+                logger.error("County technology package allocation information still not found after rerunning optimization process")
                 return
 
-        # 创建新的环境实例
+        # Create new environment instance
         env = GasEnv(env_config)
         env.reset()
-        logger.info("环境已重置到初始状态")
+        logger.info("Environment reset to initial state")
 
-        # 第一步：应用到被分配到第一步的县
+        # Step 1: Apply to counties assigned to step 1
         if counties_step1 and optimization_stats['step_1']['tech_package'] and optimization_stats['step_1']['tech_package']['selected_techs']:
-            logger.info(f"正在应用第一步技术包到 {len(counties_step1)} 个县...")
+            logger.info(f"Applying Step 1 technology package to {len(counties_step1)} counties...")
             _, _, _, tech_impacts_1 = apply_tech_package_to_counties(env, counties_step1,
                                          sorted(optimization_stats['step_1']['tech_package']['selected_techs']),
                                          optimization_stats['step_1']['tech_package'], collect_impacts=True)
-            logger.info("第一步技术应用完成")
+            logger.info("Step 1 technology application completed")
 
-        # 第二步：应用到被分配到第二步的县
+        # Step 2: Apply to counties assigned to step 2
         if counties_step2 and optimization_stats['step_2']['tech_package'] and optimization_stats['step_2']['tech_package']['selected_techs']:
-            logger.info(f"正在应用第二步技术包到 {len(counties_step2)} 个县...")
+            logger.info(f"Applying Step 2 technology package to {len(counties_step2)} counties...")
             _, _, _, tech_impacts_2 = apply_tech_package_to_counties(env, counties_step2,
                                          sorted(optimization_stats['step_2']['tech_package']['selected_techs']),
                                          optimization_stats['step_2']['tech_package'], collect_impacts=True)
-            logger.info("第二步技术应用完成")
+            logger.info("Step 2 technology application completed")
 
-        # 第三步：应用到被分配到第三步的县
+        # Step 3: Apply to counties assigned to step 3
         if counties_step3 and optimization_stats['step_3']['tech_package'] and optimization_stats['step_3']['tech_package']['selected_techs']:
-            logger.info(f"正在应用第三步技术包到 {len(counties_step3)} 个县...")
+            logger.info(f"Applying Step 3 technology package to {len(counties_step3)} counties...")
             _, _, _, tech_impacts_3 = apply_tech_package_to_counties(env, counties_step3,
                                          sorted(optimization_stats['step_3']['tech_package']['selected_techs']),
                                          optimization_stats['step_3']['tech_package'], collect_impacts=True)
-            logger.info("第三步技术应用完成")
+            logger.info("Step 3 technology application completed")
         else:
-            logger.warning("未找到县的技术包分配信息，跳过技术重新应用")
+            logger.warning("County technology package allocation information not found, skipping technology reapplication")
 
-        logger.info("技术重新应用完成")
+        logger.info("Technology reapplication completed")
 
-        # 收集所有步骤的影响数据
+        # Collect impact data from all steps
         final_tech_impacts = {}
         if 'tech_impacts_1' in locals() and tech_impacts_1:
             final_tech_impacts['step_1'] = {'tech_impacts': tech_impacts_1}
@@ -1938,26 +1938,26 @@ def main():
         if 'tech_impacts_3' in locals() and tech_impacts_3:
             final_tech_impacts['step_3'] = {'tech_impacts': tech_impacts_3}
 
-        # 将收集的影响数据添加到优化统计中
+        # Add collected impact data to optimization statistics
         for step_key, impacts_data in final_tech_impacts.items():
             if step_key in optimization_stats:
                 optimization_stats[step_key]['tech_impacts'] = impacts_data['tech_impacts']
 
-        # 输出最终状态
-        # 如果重新运行了优化过程，则不跳过技术保存
+        # Output final state
+        # If optimization process was rerun, do not skip technology saving
         final_skip_tech_save = skip_tech_selection
         if not ('county_assignments' in optimization_stats or optimization_stats['county_assignments']):
-            final_skip_tech_save = False  # 重新运行了优化过程，需要保存文件
+            final_skip_tech_save = False  # Optimization process was rerun, need to save files
 
         state_df, gap_df, summary_df, cost_df = output_state_summary(env, output_dir="results/level_based_stepwise_techs", suffix="level_based_stepwise_techs", optimization_stats=optimization_stats, skip_tech_save=final_skip_tech_save)
 
-        # 创建技术影响汇总表
+        # Create technology impact summary table
         try:
             create_tech_impact_summary(output_dir="results/level_based_stepwise_techs")
         except Exception as e:
-            logger.error(f"创建技术影响汇总表时出错: {e}")
+            logger.error(f"Error creating technology impact summary table: {e}")
 
-        # 保存优化统计数据
+        # Save optimization statistics data
         if not skip_tech_selection or not ('county_assignments' in optimization_stats and optimization_stats['county_assignments']):
             stats_data = []
             for step, stats in optimization_stats.items():
@@ -1973,51 +1973,51 @@ def main():
             stats_df = pd.DataFrame(stats_data)
             stats_file = os.path.join("results/level_based_stepwise_techs", "optimization_stats.xlsx")
             stats_df.to_excel(stats_file, index=False)
-            logger.info(f"优化统计数据已保存到: {stats_file}")
+            logger.info(f"Optimization statistics saved to: {stats_file}")
         else:
-            logger.info("跳过优化统计数据保存（文件已存在）")
+            logger.info("Skipping optimization statistics save (file already exists)")
 
-        # 清理临时目录
+        # Clean up temporary directory
         import shutil
         if os.path.exists("temp_yield_output"):
             shutil.rmtree("temp_yield_output")
-            logger.info("临时产量输出目录已清理")
+            logger.info("Temporary yield output directory cleaned up")
 
         logger.info("\n" + "=" * 60)
         if skip_tech_selection:
-            logger.info("基于现有技术包的重新优化完成！结果已更新到 'results/level_based_stepwise_techs' 目录中")
+            logger.info("Re-optimization based on existing technology packages completed! Results updated to 'results/level_based_stepwise_techs' directory")
         else:
-            logger.info("分步等级技术优化完成！所有结果已保存到 'results/level_based_stepwise_techs' 目录中")
+            logger.info("Step-by-step level technology optimization completed! All results saved to 'results/level_based_stepwise_techs' directory")
 
-        logger.info("包含的文件：")
+        logger.info("Included files:")
         if not skip_tech_selection:
-            logger.info("  - step_1_tech_package.xlsx: 第一步技术包详细信息")
-            logger.info("  - step_2_tech_package.xlsx: 第二步技术包详细信息")
-            logger.info("  - step_3_tech_package.xlsx: 第三步技术包详细信息")
-            logger.info("  - tech_packages.xlsx: 全部技术包汇总信息")
-            logger.info("  - county_tech_assignments.xlsx: 县的技术包分配")
-            logger.info("  - optimization_stats.xlsx: 分步等级优化统计")
+            logger.info("  - step_1_tech_package.xlsx: Step 1 technology package details")
+            logger.info("  - step_2_tech_package.xlsx: Step 2 technology package details")
+            logger.info("  - step_3_tech_package.xlsx: Step 3 technology package details")
+            logger.info("  - tech_packages.xlsx: All technology packages summary information")
+            logger.info("  - county_tech_assignments.xlsx: County technology package assignments")
+            logger.info("  - optimization_stats.xlsx: Step-by-step level optimization statistics")
 
-        logger.info("  - state_after_single_step_techs.xlsx: 观察状态数据")
-        logger.info("  - gaps_after_single_step_techs.xlsx: 减排差距数据")
-        logger.info("  - 达标统计摘要.xlsx: 达标情况统计")
-        logger.info("  - cost.xlsx: 成本数据")
-        logger.info("  - county_tech_impacts_summary.xlsx: 县技术影响汇总")
-        logger.info("  - county_tech_impacts_detailed.xlsx: 县技术影响详细信息")
-        logger.info("  - tech_gas_impact_summary.xlsx: 技术对气体影响汇总表")
-        logger.info("  - tech_county_impacts/ 目录: 每个技术的详细影响数据")
-        logger.info("  - 各种状态映射文件 (按key分别保存)")
+        logger.info("  - state_after_single_step_techs.xlsx: Observation state data")
+        logger.info("  - gaps_after_single_step_techs.xlsx: Emission reduction gap data")
+        logger.info("  - compliance_statistics_summary.xlsx: Compliance statistics summary")
+        logger.info("  - cost.xlsx: Cost data")
+        logger.info("  - county_tech_impacts_summary.xlsx: County technology impacts summary")
+        logger.info("  - county_tech_impacts_detailed.xlsx: County technology impacts detailed")
+        logger.info("  - tech_gas_impact_summary.xlsx: Technology gas impact summary table")
+        logger.info("  - tech_county_impacts/ directory: Detailed impact data for each technology")
+        logger.info("  - Various state mapping files (saved by key separately)")
         logger.info("=" * 60)
         
     except Exception as e:
-        logger.error(f"执行过程中出现错误: {e}")
+        logger.error(f"Error: {e}")
         import traceback
         traceback.print_exc()
 
 if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1 and sys.argv[1] == "summary":
-        # 只运行汇总功能
+        # Only run summary function
         create_tech_impact_summary()
     else:
         main()
